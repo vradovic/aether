@@ -5,9 +5,14 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-
-	"github.com/vradovic/aether/services/api/internal/db"
 )
+
+type registerRequest struct {
+	Email     string `json:"email"`
+	Password  string `json:"password"`
+	FirstName string `json:"firstName"`
+	LastName  string `json:"lastName"`
+}
 
 type handler struct {
 	svc    *service
@@ -35,15 +40,17 @@ func (h *handler) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.svc.register(r.Context(), dto)
+	err = h.svc.register(r.Context(), registerInput{
+		email:     dto.Email,
+		password:  dto.Password,
+		firstName: dto.FirstName,
+		lastName:  dto.LastName,
+	})
 	if err != nil {
 		if errors.Is(err, errPasswordLength) ||
 			errors.Is(err, errNameLength) ||
 			errors.Is(err, errEmailFormat) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		} else if db.IsUniqueViolation(err) {
-			http.Error(w, "user already exists", http.StatusConflict)
 			return
 		}
 
