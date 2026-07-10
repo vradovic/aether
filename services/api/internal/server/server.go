@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/vradovic/aether/services/api/internal/auth"
 	"github.com/vradovic/aether/services/api/internal/config"
 	"github.com/vradovic/aether/services/api/internal/db"
 	"github.com/vradovic/aether/services/api/internal/users"
@@ -27,6 +28,7 @@ func NewServer(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*s
 		return nil, err
 	}
 	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
 		return nil, err
 	}
 
@@ -35,7 +37,11 @@ func NewServer(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*s
 	usersService := users.NewService(queries, logger)
 	usersHandler := users.NewHandler(usersService, logger)
 
+	authService := auth.NewService(queries, logger)
+	authHandler := auth.NewHandler(authService, logger)
+
 	usersHandler.RegisterRoutes(mux)
+	authHandler.RegisterRoutes(mux)
 
 	return &server{
 		cfg:    cfg,
