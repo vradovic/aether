@@ -17,13 +17,17 @@ const minPasswordLengthBytes = 8
 const maxPasswordLengthBytes = 72
 const minNameLength = 2
 const maxNameLength = 50
+const minUsernameLength = 3
+const maxUsernameLength = 30
 
 var errPasswordLength = fmt.Errorf("password should be between %d and %d characters long", minPasswordLengthBytes, maxPasswordLengthBytes)
 var errNameLength = fmt.Errorf("name should be between %d and %d characters long", minNameLength, maxNameLength)
+var errUsernameLength = fmt.Errorf("username should be between %d and %d characters long", minUsernameLength, maxUsernameLength)
 var errEmailFormat = fmt.Errorf("invalid email format")
 
 type registerInput struct {
 	email     string
+	username  string
 	password  string
 	firstName string
 	lastName  string
@@ -48,11 +52,13 @@ type loginOutput struct {
 
 func (r registerInput) normalize() registerInput {
 	email := strings.ToLower(strings.TrimSpace(r.email))
+	username := strings.TrimSpace(r.username)
 	firstName := strings.TrimSpace(r.firstName)
 	lastName := strings.TrimSpace(r.lastName)
 
 	return registerInput{
 		email:     email,
+		username:  username,
 		password:  r.password,
 		firstName: firstName,
 		lastName:  lastName,
@@ -76,6 +82,11 @@ func (r registerInput) validate() error {
 	if len(r.password) < minPasswordLengthBytes ||
 		len(r.password) > maxPasswordLengthBytes {
 		return errPasswordLength
+	}
+
+	if utf8.RuneCountInString(r.username) < minUsernameLength ||
+		utf8.RuneCountInString(r.username) > maxUsernameLength {
+		return errUsernameLength
 	}
 
 	return nil
@@ -139,6 +150,7 @@ func (s *service) register(ctx context.Context, input registerInput) error {
 
 	return s.querier.CreateUser(ctx, db.CreateUserParams{
 		Email:        input.email,
+		Username:     input.username,
 		PasswordHash: passwordHash,
 		FirstName:    input.firstName,
 		LastName:     input.lastName,

@@ -213,15 +213,17 @@ func TestRegisterInputNormalize(t *testing.T) {
 		want  registerInput
 	}{
 		{
-			name: "trims and lowercases email and trims names",
+			name: "normalizes email and trims username and names",
 			input: registerInput{
 				email:     "  User.Name@Example.COM\t",
+				username:  "  petar_92 ",
 				password:  " password with spaces ",
 				firstName: "  Petar ",
 				lastName:  "\tPetrović\n",
 			},
 			want: registerInput{
 				email:     "user.name@example.com",
+				username:  "petar_92",
 				password:  " password with spaces ",
 				firstName: "Petar",
 				lastName:  "Petrović",
@@ -231,12 +233,14 @@ func TestRegisterInputNormalize(t *testing.T) {
 			name: "leaves normalized input unchanged",
 			input: registerInput{
 				email:     "user@example.com",
+				username:  "ana",
 				password:  "password123",
 				firstName: "Ana",
 				lastName:  "Ivić",
 			},
 			want: registerInput{
 				email:     "user@example.com",
+				username:  "ana",
 				password:  "password123",
 				firstName: "Ana",
 				lastName:  "Ivić",
@@ -262,6 +266,7 @@ func TestRegisterInputNormalize(t *testing.T) {
 func TestRegisterInputValidate(t *testing.T) {
 	valid := registerInput{
 		email:     "user@example.com",
+		username:  "petar",
 		password:  "password123",
 		firstName: "Petar",
 		lastName:  "Petrović",
@@ -277,9 +282,32 @@ func TestRegisterInputValidate(t *testing.T) {
 			input: valid,
 		},
 		{
+			name: "username is too short",
+			input: registerInput{
+				email:     valid.email,
+				username:  "ab",
+				password:  valid.password,
+				firstName: valid.firstName,
+				lastName:  valid.lastName,
+			},
+			want: errUsernameLength,
+		},
+		{
+			name: "username is too long",
+			input: registerInput{
+				email:     valid.email,
+				username:  strings.Repeat("a", maxUsernameLength+1),
+				password:  valid.password,
+				firstName: valid.firstName,
+				lastName:  valid.lastName,
+			},
+			want: errUsernameLength,
+		},
+		{
 			name: "unicode names are counted as characters",
 			input: registerInput{
 				email:     valid.email,
+				username:  valid.username,
 				password:  valid.password,
 				firstName: "Žž",
 				lastName:  strings.Repeat("ć", maxNameLength),
@@ -339,6 +367,7 @@ func TestRegisterInputValidate(t *testing.T) {
 			name: "password at maximum byte length is valid",
 			input: registerInput{
 				email:     valid.email,
+				username:  valid.username,
 				password:  strings.Repeat("a", maxPasswordLengthBytes),
 				firstName: valid.firstName,
 				lastName:  valid.lastName,
@@ -372,6 +401,7 @@ func TestServiceRegister(t *testing.T) {
 		svc := &service{querier: querier}
 		input := registerInput{
 			email:     "  User@Example.COM ",
+			username:  " petar_92 ",
 			password:  " password123 ",
 			firstName: "  Petar ",
 			lastName:  " Petrović\t",
@@ -386,6 +416,9 @@ func TestServiceRegister(t *testing.T) {
 		}
 		if querier.params.Email != "user@example.com" {
 			t.Errorf("CreateUser() email = %q, want %q", querier.params.Email, "user@example.com")
+		}
+		if querier.params.Username != "petar_92" {
+			t.Errorf("CreateUser() username = %q, want %q", querier.params.Username, "petar_92")
 		}
 		if querier.params.FirstName != "Petar" {
 			t.Errorf("CreateUser() first name = %q, want %q", querier.params.FirstName, "Petar")
@@ -406,6 +439,7 @@ func TestServiceRegister(t *testing.T) {
 		svc := &service{querier: querier}
 		input := registerInput{
 			email:     "user@example.com",
+			username:  "petar",
 			password:  "password123",
 			firstName: "   ",
 			lastName:  "Petrović",
@@ -426,6 +460,7 @@ func TestServiceRegister(t *testing.T) {
 		svc := &service{querier: querier}
 		input := registerInput{
 			email:     "user@example.com",
+			username:  "petar",
 			password:  "password123",
 			firstName: "Petar",
 			lastName:  "Petrović",

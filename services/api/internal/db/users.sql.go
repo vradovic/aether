@@ -12,12 +12,13 @@ import (
 )
 
 const createUser = `-- name: CreateUser :exec
-INSERT INTO users (email, password_hash, first_name, last_name)
-VALUES ($1, $2, $3, $4)
+INSERT INTO users (email, username, password_hash, first_name, last_name)
+VALUES ($1, $2, $3, $4, $5)
 `
 
 type CreateUserParams struct {
 	Email        string
+	Username     string
 	PasswordHash string
 	FirstName    string
 	LastName     string
@@ -26,6 +27,7 @@ type CreateUserParams struct {
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) error {
 	_, err := q.db.Exec(ctx, createUser,
 		arg.Email,
+		arg.Username,
 		arg.PasswordHash,
 		arg.FirstName,
 		arg.LastName,
@@ -37,6 +39,7 @@ const getUserByEmail = `-- name: GetUserByEmail :one
 SELECT
     id,
     email,
+    username,
     first_name,
     last_name
 FROM users
@@ -46,6 +49,7 @@ WHERE email = $1
 type GetUserByEmailRow struct {
 	ID        pgtype.UUID
 	Email     string
+	Username  string
 	FirstName string
 	LastName  string
 }
@@ -56,6 +60,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (GetUserByEm
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
+		&i.Username,
 		&i.FirstName,
 		&i.LastName,
 	)

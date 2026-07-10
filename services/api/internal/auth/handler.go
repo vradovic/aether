@@ -9,6 +9,7 @@ import (
 
 type registerRequest struct {
 	Email     string `json:"email"`
+	Username  string `json:"username"`
 	Password  string `json:"password"`
 	FirstName string `json:"firstName"`
 	LastName  string `json:"lastName"`
@@ -88,6 +89,7 @@ func (h *handler) register(w http.ResponseWriter, r *http.Request) {
 
 	err = h.svc.register(r.Context(), registerInput{
 		email:     dto.Email,
+		username:  dto.Username,
 		password:  dto.Password,
 		firstName: dto.FirstName,
 		lastName:  dto.LastName,
@@ -95,6 +97,7 @@ func (h *handler) register(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, errPasswordLength) ||
 			errors.Is(err, errNameLength) ||
+			errors.Is(err, errUsernameLength) ||
 			errors.Is(err, errEmailFormat) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

@@ -46,6 +46,7 @@ func (h *handler) getUserByEmail(w http.ResponseWriter, r *http.Request) {
 	resp := userResponse{
 		ID:        row.ID.String(),
 		Email:     row.Email,
+		Username:  row.Username,
 		FirstName: row.FirstName,
 		LastName:  row.LastName,
 	}

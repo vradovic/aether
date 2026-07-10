@@ -176,6 +176,18 @@ go mod verify
 # Regenerate database code after SQL query/schema changes
 sqlc generate
 
+# Load the local database URL while tolerating CRLF line endings in .env
+export DB_ADDRESS="$(sed -n 's/^DB_ADDRESS=//p' .env | tr -d '\r')"
+
+# Create and validate timestamped Goose migrations
+goose -dir sql/migrations create <migration_name> sql
+goose -dir sql/migrations validate
+
+# Inspect, apply, or roll back local database migrations
+goose -dir sql/migrations postgres "$DB_ADDRESS" status
+goose -dir sql/migrations postgres "$DB_ADDRESS" up
+goose -dir sql/migrations postgres "$DB_ADDRESS" down
+
 # Start the local PostgreSQL dependency
 docker compose --env-file deployments/.env -f deployments/docker-compose.yml up -d
 

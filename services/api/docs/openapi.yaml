@@ -36,6 +36,7 @@ paths:
                 summary: Registration request
                 value:
                   email: user@example.com
+                  username: petar
                   password: password123
                   firstName: Petar
                   lastName: Petrović
@@ -122,6 +123,7 @@ paths:
                   value:
                     id: 550e8400-e29b-41d4-a716-446655440000
                     email: user@example.com
+                    username: petar
                     firstName: Petar
                     lastName: Petrović
         "400":
@@ -142,6 +144,7 @@ components:
       type: object
       required:
         - email
+        - username
         - password
         - firstName
         - lastName
@@ -151,6 +154,12 @@ components:
           format: email
           description: Email address, trimmed and lowercased during registration.
           example: user@example.com
+        username:
+          type: string
+          minLength: 3
+          maxLength: 30
+          description: Unique username after surrounding whitespace is removed.
+          example: petar
         password:
           type: string
           format: password
@@ -220,6 +229,7 @@ components:
       required:
         - id
         - email
+        - username
         - firstName
         - lastName
       properties:
@@ -231,6 +241,11 @@ components:
           type: string
           format: email
           example: user@example.com
+        username:
+          type: string
+          minLength: 3
+          maxLength: 30
+          example: petar
         firstName:
           type: string
           example: Petar

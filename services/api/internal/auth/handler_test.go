@@ -98,3 +98,50 @@ func TestHandlerLogin(t *testing.T) {
 		}
 	})
 }
+
+func TestHandlerRegister(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	t.Run("passes username to user creation", func(t *testing.T) {
+		querier := &fakeQuerier{}
+		h := NewHandler(&service{querier: querier}, logger)
+		request := httptest.NewRequest(
+			http.MethodPost,
+			"/register",
+			strings.NewReader(`{"email":"user@example.com","username":"petar","password":"password123","firstName":"Petar","lastName":"Petrović"}`),
+		)
+		response := httptest.NewRecorder()
+
+		h.register(response, request)
+
+		if response.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want %d; body = %q", response.Code, http.StatusCreated, response.Body.String())
+		}
+		if querier.params.Username != "petar" {
+			t.Errorf("CreateUser() username = %q, want %q", querier.params.Username, "petar")
+		}
+	})
+
+	t.Run("rejects invalid username", func(t *testing.T) {
+		querier := &fakeQuerier{}
+		h := NewHandler(&service{querier: querier}, logger)
+		request := httptest.NewRequest(
+			http.MethodPost,
+			"/register",
+			strings.NewReader(`{"email":"user@example.com","username":"ab","password":"password123","firstName":"Petar","lastName":"Petrović"}`),
+		)
+		response := httptest.NewRecorder()
+
+		h.register(response, request)
+
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d; body = %q", response.Code, http.StatusBadRequest, response.Body.String())
+		}
+		if response.Body.String() != errUsernameLength.Error()+"\n" {
+			t.Errorf("body = %q, want %q", response.Body.String(), errUsernameLength.Error()+"\n")
+		}
+		if querier.calls != 0 {
+			t.Fatalf("CreateUser() calls = %d, want 0", querier.calls)
+		}
+	})
+}

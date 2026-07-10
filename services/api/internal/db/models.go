@@ -8,6 +8,11 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Contact struct {
+	User1 pgtype.UUID
+	User2 pgtype.UUID
+}
+
 type User struct {
 	ID           pgtype.UUID
 	Email        string
@@ -16,4 +21,5 @@ type User struct {
 	LastName     string
 	CreatedAt    pgtype.Timestamptz
 	UpdatedAt    pgtype.Timestamptz
+	Username     string
 }
