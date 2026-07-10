@@ -1,5 +1,30 @@
 package main
 
+import (
+	"context"
+	"log"
+	"log/slog"
+	"os"
+
+	"github.com/vradovic/aether/services/api/internal/config"
+	"github.com/vradovic/aether/services/api/internal/server"
+)
+
 func main() {
-	println("Hello, world!")
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatal("failed to load config: ", err)
+	}
+
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+
+	ctx := context.Background()
+
+	s, err := server.NewServer(ctx, cfg, logger)
+	if err != nil {
+		log.Fatal("failed to create server: ", err)
+	}
+	if err := s.Start(); err != nil {
+		log.Fatal("failed to start server: ", err)
+	}
 }
