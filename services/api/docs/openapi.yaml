@@ -47,6 +47,53 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
+  /login:
+    post:
+      operationId: loginUser
+      tags:
+        - Authentication
+      summary: Log in a user
+      description: |
+        Verifies an email and password and returns a short-lived JWT access token.
+        The email is trimmed and lowercased; password whitespace is preserved.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+            examples:
+              default:
+                summary: Login request
+                value:
+                  email: user@example.com
+                  password: password123
+      responses:
+        "200":
+          description: Login successful.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+              examples:
+                default:
+                  summary: Access token response
+                  value:
+                    accessToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.signature
+                    tokenType: Bearer
+                    expiresIn: 900
+        "400":
+          description: The request body is malformed.
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "invalid request body\n"
+        "401":
+          $ref: "#/components/responses/InvalidCredentials"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
   /users:
     get:
       operationId: getUserByEmail
@@ -125,6 +172,48 @@ components:
           description: Last name after surrounding whitespace is removed.
           example: Petrović
 
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: Email address, trimmed and lowercased before credential lookup.
+          example: user@example.com
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          description: Password whose whitespace is preserved during verification.
+          example: password123
+
+    LoginResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - accessToken
+        - tokenType
+        - expiresIn
+      properties:
+        accessToken:
+          type: string
+          description: Signed JWT access token.
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.signature
+        tokenType:
+          type: string
+          enum:
+            - Bearer
+          example: Bearer
+        expiresIn:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Number of seconds until the access token expires.
+          example: 900
+
     User:
       type: object
       additionalProperties: false
@@ -174,3 +263,18 @@ components:
           schema:
             type: string
           example: "internal error\n"
+
+    InvalidCredentials:
+      description: The email or password is incorrect.
+      content:
+        text/plain:
+          schema:
+            type: string
+          example: "invalid credentials\n"
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Supply the access token returned by `/login`.

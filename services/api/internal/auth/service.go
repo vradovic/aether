@@ -2,12 +2,14 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/mail"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/vradovic/aether/services/api/internal/db"
 )
 
@@ -25,6 +27,23 @@ type registerInput struct {
 	password  string
 	firstName string
 	lastName  string
+}
+
+type loginInput struct {
+	email    string
+	password string
+}
+
+func (i loginInput) normalize() loginInput {
+	return loginInput{
+		email:    strings.ToLower(strings.TrimSpace(i.email)),
+		password: i.password,
+	}
+}
+
+type loginOutput struct {
+	accessToken      string
+	expiresInSeconds int64
 }
 
 func (r registerInput) normalize() registerInput {
@@ -64,18 +83,47 @@ func (r registerInput) validate() error {
 
 type querier interface {
 	CreateUser(ctx context.Context, arg db.CreateUserParams) error
+	GetUserCredentialsByEmail(ctx context.Context, email string) (db.GetUserCredentialsByEmailRow, error)
 }
 
 type service struct {
-	querier querier
-	logger  *slog.Logger
+	querier     querier
+	tokenIssuer tokenIssuer
+	logger      *slog.Logger
 }
 
-func NewService(queries querier, logger *slog.Logger) *service {
+func NewService(queries querier, tokenIssuer tokenIssuer, logger *slog.Logger) *service {
 	return &service{
-		querier: queries,
-		logger:  logger,
+		querier:     queries,
+		tokenIssuer: tokenIssuer,
+		logger:      logger,
 	}
+}
+
+func (s *service) login(ctx context.Context, input loginInput) (loginOutput, error) {
+	input = input.normalize()
+
+	credentials, err := s.querier.GetUserCredentialsByEmail(ctx, input.email)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return loginOutput{}, errInvalidCredentials
+	}
+	if err != nil {
+		return loginOutput{}, fmt.Errorf("get user credentials: %w", err)
+	}
+
+	if err := verifyPassword(input.password, credentials.PasswordHash); err != nil {
+		return loginOutput{}, errInvalidCredentials
+	}
+
+	token, err := s.tokenIssuer.issue(credentials.UserID.String())
+	if err != nil {
+		return loginOutput{}, fmt.Errorf("issue access token: %w", err)
+	}
+
+	return loginOutput{
+		accessToken:      token.value,
+		expiresInSeconds: token.expiresInSeconds,
+	}, nil
 }
 
 func (s *service) register(ctx context.Context, input registerInput) error {

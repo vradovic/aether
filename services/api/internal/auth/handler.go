@@ -14,6 +14,17 @@ type registerRequest struct {
 	LastName  string `json:"lastName"`
 }
 
+type loginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type loginResponse struct {
+	AccessToken string `json:"accessToken"`
+	TokenType   string `json:"tokenType"`
+	ExpiresIn   int64  `json:"expiresIn"`
+}
+
 type handler struct {
 	svc    *service
 	logger *slog.Logger
@@ -28,6 +39,41 @@ func NewHandler(svc *service, logger *slog.Logger) *handler {
 
 func (h *handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /register", h.register)
+	mux.HandleFunc("POST /login", h.login)
+}
+
+func (h *handler) login(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MiB
+
+	var request loginRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	output, err := h.svc.login(r.Context(), loginInput{
+		email:    request.Email,
+		password: request.Password,
+	})
+	if err != nil {
+		if errors.Is(err, errInvalidCredentials) {
+			http.Error(w, errInvalidCredentials.Error(), http.StatusUnauthorized)
+			return
+		}
+
+		h.logger.Error("login failed", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(loginResponse{
+		AccessToken: output.accessToken,
+		TokenType:   "Bearer",
+		ExpiresIn:   output.expiresInSeconds,
+	}); err != nil {
+		h.logger.Error("failed to encode login response", "err", err)
+	}
 }
 
 func (h *handler) register(w http.ResponseWriter, r *http.Request) {

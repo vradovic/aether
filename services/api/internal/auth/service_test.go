@@ -6,19 +6,204 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/vradovic/aether/services/api/internal/db"
 )
 
+var testUserID = pgtype.UUID{
+	Bytes: [16]byte{0x55, 0x0e, 0x84, 0x00, 0xe2, 0x9b, 0x41, 0xd4, 0xa7, 0x16, 0x44, 0x66, 0x55, 0x44, 0x00, 0x00},
+	Valid: true,
+}
+
 type fakeQuerier struct {
-	calls  int
-	params db.CreateUserParams
-	err    error
+	calls           int
+	params          db.CreateUserParams
+	err             error
+	credentialCalls int
+	credentialEmail string
+	credentials     db.GetUserCredentialsByEmailRow
+	credentialErr   error
 }
 
 func (f *fakeQuerier) CreateUser(_ context.Context, params db.CreateUserParams) error {
 	f.calls++
 	f.params = params
 	return f.err
+}
+
+func (f *fakeQuerier) GetUserCredentialsByEmail(_ context.Context, email string) (db.GetUserCredentialsByEmailRow, error) {
+	f.credentialCalls++
+	f.credentialEmail = email
+	return f.credentials, f.credentialErr
+}
+
+type fakeTokenIssuer struct {
+	calls  int
+	userID string
+	token  issuedToken
+	err    error
+}
+
+func (f *fakeTokenIssuer) issue(userID string) (issuedToken, error) {
+	f.calls++
+	f.userID = userID
+	return f.token, f.err
+}
+
+func TestLoginInputNormalize(t *testing.T) {
+	input := loginInput{
+		email:    "  User.Name@Example.COM\t",
+		password: " password with spaces ",
+	}
+
+	want := loginInput{
+		email:    "user.name@example.com",
+		password: " password with spaces ",
+	}
+
+	if got := input.normalize(); got != want {
+		t.Fatalf("normalize() = %#v, want %#v", got, want)
+	}
+}
+
+func TestServiceLogin(t *testing.T) {
+	password := " password123 "
+	passwordHash, err := hashPassword(password)
+	if err != nil {
+		t.Fatalf("hashPassword() error = %v", err)
+	}
+
+	t.Run("normalizes email and returns an access token", func(t *testing.T) {
+		querier := &fakeQuerier{
+			credentials: db.GetUserCredentialsByEmailRow{
+				UserID:       testUserID,
+				PasswordHash: passwordHash,
+			},
+		}
+		tokens := &fakeTokenIssuer{
+			token: issuedToken{
+				value:            "signed-token",
+				expiresInSeconds: 900,
+			},
+		}
+		svc := &service{
+			querier:     querier,
+			tokenIssuer: tokens,
+		}
+
+		output, err := svc.login(context.Background(), loginInput{
+			email:    "  User@Example.COM ",
+			password: password,
+		})
+		if err != nil {
+			t.Fatalf("login() error = %v", err)
+		}
+		if querier.credentialEmail != "user@example.com" {
+			t.Errorf("GetUserCredentialsByEmail() email = %q, want %q", querier.credentialEmail, "user@example.com")
+		}
+		if tokens.calls != 1 {
+			t.Fatalf("issue() calls = %d, want 1", tokens.calls)
+		}
+		if tokens.userID != querier.credentials.UserID.String() {
+			t.Errorf("issue() user ID = %q, want %q", tokens.userID, querier.credentials.UserID.String())
+		}
+		if output.accessToken != tokens.token.value {
+			t.Errorf("login() access token = %q, want %q", output.accessToken, tokens.token.value)
+		}
+		if output.expiresInSeconds != tokens.token.expiresInSeconds {
+			t.Errorf("login() expires in = %d, want %d", output.expiresInSeconds, tokens.token.expiresInSeconds)
+		}
+	})
+
+	t.Run("incorrect password returns invalid credentials", func(t *testing.T) {
+		querier := &fakeQuerier{
+			credentials: db.GetUserCredentialsByEmailRow{
+				UserID:       testUserID,
+				PasswordHash: passwordHash,
+			},
+		}
+		tokens := &fakeTokenIssuer{}
+		svc := &service{
+			querier:     querier,
+			tokenIssuer: tokens,
+		}
+
+		_, err := svc.login(context.Background(), loginInput{
+			email:    "user@example.com",
+			password: "wrong password",
+		})
+		if !errors.Is(err, errInvalidCredentials) {
+			t.Fatalf("login() error = %v, want %v", err, errInvalidCredentials)
+		}
+		if tokens.calls != 0 {
+			t.Fatalf("issue() calls = %d, want 0", tokens.calls)
+		}
+	})
+
+	t.Run("unknown email returns invalid credentials", func(t *testing.T) {
+		querier := &fakeQuerier{credentialErr: pgx.ErrNoRows}
+		tokens := &fakeTokenIssuer{}
+		svc := &service{
+			querier:     querier,
+			tokenIssuer: tokens,
+		}
+
+		_, err := svc.login(context.Background(), loginInput{
+			email:    "missing@example.com",
+			password: password,
+		})
+		if !errors.Is(err, errInvalidCredentials) {
+			t.Fatalf("login() error = %v, want %v", err, errInvalidCredentials)
+		}
+		if tokens.calls != 0 {
+			t.Fatalf("issue() calls = %d, want 0", tokens.calls)
+		}
+	})
+
+	t.Run("returns database error", func(t *testing.T) {
+		dbErr := errors.New("database unavailable")
+		querier := &fakeQuerier{credentialErr: dbErr}
+		tokens := &fakeTokenIssuer{}
+		svc := &service{
+			querier:     querier,
+			tokenIssuer: tokens,
+		}
+
+		_, err := svc.login(context.Background(), loginInput{
+			email:    "user@example.com",
+			password: password,
+		})
+		if !errors.Is(err, dbErr) {
+			t.Fatalf("login() error = %v, want %v", err, dbErr)
+		}
+		if tokens.calls != 0 {
+			t.Fatalf("issue() calls = %d, want 0", tokens.calls)
+		}
+	})
+
+	t.Run("returns token issuer error", func(t *testing.T) {
+		issuerErr := errors.New("signing unavailable")
+		querier := &fakeQuerier{
+			credentials: db.GetUserCredentialsByEmailRow{
+				UserID:       testUserID,
+				PasswordHash: passwordHash,
+			},
+		}
+		tokens := &fakeTokenIssuer{err: issuerErr}
+		svc := &service{
+			querier:     querier,
+			tokenIssuer: tokens,
+		}
+
+		_, err := svc.login(context.Background(), loginInput{
+			email:    "user@example.com",
+			password: password,
+		})
+		if !errors.Is(err, issuerErr) {
+			t.Fatalf("login() error = %v, want %v", err, issuerErr)
+		}
+	})
 }
 
 func TestRegisterInputNormalize(t *testing.T) {

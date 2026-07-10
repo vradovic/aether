@@ -37,7 +37,12 @@ func NewServer(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*s
 	usersService := users.NewService(queries, logger)
 	usersHandler := users.NewHandler(usersService, logger)
 
-	authService := auth.NewService(queries, logger)
+	tokenIssuer := auth.NewAccessTokenIssuer(
+		cfg.JWTSigningKey,
+		cfg.JWTIssuer,
+		cfg.JWTAccessTokenTTL,
+	)
+	authService := auth.NewService(queries, tokenIssuer, logger)
 	authHandler := auth.NewHandler(authService, logger)
 
 	usersHandler.RegisterRoutes(mux)
