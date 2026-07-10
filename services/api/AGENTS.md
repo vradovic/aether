@@ -26,6 +26,8 @@ Keep module boundaries clear enough that features can evolve independently, but 
 services/api/
 |-- cmd/api/                 # Application entry point
 |-- deployments/            # Local deployment configuration
+|-- docs/
+|   `-- openapi.yaml         # Canonical HTTP API contract
 |-- internal/
 |   |-- auth/                # Authentication HTTP and business logic
 |   |-- config/              # Environment-backed configuration
@@ -103,6 +105,14 @@ func (s *service) register(ctx context.Context, input registerInput) error {
 - Use a new timestamped Goose migration for schema changes; do not rewrite a migration that may already have been applied outside local development.
 - Keep transactions at the service/use-case boundary when an operation requires multiple writes to succeed atomically.
 
+### API documentation
+
+- Treat `docs/openapi.yaml` as the canonical HTTP API contract and keep it aligned with the behavior implemented by handlers.
+- Any change that adds, removes, or modifies an HTTP endpoint, request, response, status code, authentication requirement, or externally visible validation rule must update `docs/openapi.yaml` in the same change.
+- Include realistic, non-secret examples for request bodies, parameters, successful responses, and important error responses.
+- Keep operation IDs stable after clients begin depending on them.
+- Document future WebSocket upgrade endpoints in OpenAPI. Add an AsyncAPI document when message types and bidirectional event flows are introduced.
+
 ### Errors, logging, and security
 
 - Use stable sentinel or typed service errors when callers need to branch with `errors.Is` or `errors.As`.
@@ -168,6 +178,9 @@ sqlc generate
 
 # Start the local PostgreSQL dependency
 docker compose --env-file deployments/.env -f deployments/docker-compose.yml up -d
+
+# Open the generated API reference at http://localhost:8081
+docker compose --env-file deployments/.env -f deployments/docker-compose.yml up -d aether-swagger-ui
 ```
 
 Use `go test ./...` and `go vet ./...` before handing off code unless the environment cannot run them. Report any command that was not run and why. Run `go mod tidy` only after dependency changes because it can create unrelated module-file churn. Run `sqlc generate` only when the relevant SQL or generation configuration changed, and review the generated diff.
@@ -181,5 +194,6 @@ Before considering API work complete:
 3. Add or update focused tests for behavior and failure paths.
 4. Format changed Go files with `gofmt`.
 5. Run targeted tests, then `go test ./...` and `go vet ./...` when practical.
-6. Regenerate sqlc output when SQL changed and verify generated files were not edited manually.
-7. Check the diff for secrets, plaintext credentials, accidental generated changes, and unrelated formatting churn.
+6. Update `docs/openapi.yaml` whenever the externally visible HTTP API changed.
+7. Regenerate sqlc output when SQL changed and verify generated files were not edited manually.
+8. Check the diff for secrets, plaintext credentials, accidental generated changes, and unrelated formatting churn.

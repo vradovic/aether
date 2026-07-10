@@ -1,0 +1,176 @@
+openapi: 3.1.0
+
+info:
+  title: Aether API
+  version: 0.1.0
+  description: |
+    HTTP API for Aether, a modular monolith backend for a real-time
+    communication system.
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+tags:
+  - name: Authentication
+    description: User registration and authentication operations.
+  - name: Users
+    description: User lookup and profile operations.
+
+paths:
+  /register:
+    post:
+      operationId: registerUser
+      tags:
+        - Authentication
+      summary: Register a user
+      description: Creates a user after normalizing and validating the supplied registration data.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+            examples:
+              default:
+                summary: Registration request
+                value:
+                  email: user@example.com
+                  password: password123
+                  firstName: Petar
+                  lastName: Petrović
+      responses:
+        "201":
+          description: User registered successfully.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /users:
+    get:
+      operationId: getUserByEmail
+      tags:
+        - Users
+      summary: Get a user by email
+      parameters:
+        - name: email
+          in: query
+          required: true
+          description: Email address of the user to retrieve.
+          schema:
+            type: string
+            format: email
+          example: user@example.com
+      responses:
+        "200":
+          description: User found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+              examples:
+                default:
+                  summary: User response
+                  value:
+                    id: 550e8400-e29b-41d4-a716-446655440000
+                    email: user@example.com
+                    firstName: Petar
+                    lastName: Petrović
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          description: User not found.
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "user not found\n"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+components:
+  schemas:
+    RegisterRequest:
+      type: object
+      required:
+        - email
+        - password
+        - firstName
+        - lastName
+      properties:
+        email:
+          type: string
+          format: email
+          description: Email address, trimmed and lowercased during registration.
+          example: user@example.com
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          description: Password containing between 8 and 72 UTF-8 bytes. Whitespace is preserved.
+          x-aether-minLengthBytes: 8
+          x-aether-maxLengthBytes: 72
+          example: password123
+        firstName:
+          type: string
+          minLength: 2
+          maxLength: 50
+          description: First name after surrounding whitespace is removed.
+          example: Petar
+        lastName:
+          type: string
+          minLength: 2
+          maxLength: 50
+          description: Last name after surrounding whitespace is removed.
+          example: Petrović
+
+    User:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - email
+        - firstName
+        - lastName
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        firstName:
+          type: string
+          example: Petar
+        lastName:
+          type: string
+          example: Petrović
+
+  responses:
+    BadRequest:
+      description: The request is malformed or contains invalid data.
+      content:
+        text/plain:
+          schema:
+            type: string
+          examples:
+            invalidBody:
+              summary: Malformed request body
+              value: "invalid request body\n"
+            invalidEmail:
+              summary: Invalid email address
+              value: "invalid email format\n"
+            emptyEmail:
+              summary: Missing email query parameter
+              value: "email is empty\n"
+
+    InternalServerError:
+      description: An unexpected internal error occurred.
+      content:
+        text/plain:
+          schema:
+            type: string
+          example: "internal error\n"
