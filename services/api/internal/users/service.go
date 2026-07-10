@@ -7,16 +7,16 @@ import (
 	"github.com/vradovic/aether/services/api/internal/db"
 )
 
-type queries interface {
+type querier interface {
 	GetUserByEmail(ctx context.Context, email string) (db.GetUserByEmailRow, error)
 }
 
 type service struct {
-	queries queries
+	queries querier
 	logger  *slog.Logger
 }
 
-func NewService(queries queries, logger *slog.Logger) *service {
+func NewService(queries querier, logger *slog.Logger) *service {
 	return &service{
 		queries: queries,
 		logger:  logger,
