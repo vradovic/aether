@@ -16,6 +16,8 @@ tags:
     description: User registration and authentication operations.
   - name: Users
     description: User lookup and profile operations.
+  - name: Contacts
+    description: Contact request and relationship operations.
 
 paths:
   /register:
@@ -138,8 +140,149 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
+  /contact-requests:
+    post:
+      operationId: sendContactRequest
+      tags:
+        - Contacts
+      summary: Send a contact request
+      description: Sends a contact request to the user with the supplied username.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendContactRequest"
+            example:
+              username: petar
+      responses:
+        "201":
+          description: Contact request sent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactRequestCreated"
+              example:
+                id: 550e8400-e29b-41d4-a716-446655440001
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: No user has the supplied username.
+        "409":
+          description: A pending request already exists between the two users.
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /contact-requests/{requestID}:
+    delete:
+      operationId: cancelContactRequest
+      tags:
+        - Contacts
+      summary: Cancel a contact request
+      description: Cancels a pending request sent by the authenticated user.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ContactRequestID"
+      responses:
+        "204":
+          description: Contact request cancelled.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: A matching pending contact request was not found.
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /contact-requests/{requestID}/accept:
+    post:
+      operationId: acceptContactRequest
+      tags:
+        - Contacts
+      summary: Accept a contact request
+      description: Accepts a pending request received by the authenticated user and creates the contact relationship.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ContactRequestID"
+      responses:
+        "204":
+          description: Contact request accepted.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: A matching pending contact request was not found.
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /contact-requests/{requestID}/decline:
+    post:
+      operationId: declineContactRequest
+      tags:
+        - Contacts
+      summary: Decline a contact request
+      description: Declines a pending request received by the authenticated user.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ContactRequestID"
+      responses:
+        "204":
+          description: Contact request declined.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: A matching pending contact request was not found.
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
 components:
+  parameters:
+    ContactRequestID:
+      name: requestID
+      in: path
+      required: true
+      description: Contact request identifier.
+      schema:
+        type: string
+        format: uuid
+      example: 550e8400-e29b-41d4-a716-446655440001
+
   schemas:
+    SendContactRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - username
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 30
+          description: Username of the request recipient. Surrounding whitespace is removed.
+          example: petar
+
+    ContactRequestCreated:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440001
+
     RegisterRequest:
       type: object
       required:
@@ -278,6 +421,14 @@ components:
           schema:
             type: string
           example: "internal error\n"
+
+    Unauthorized:
+      description: A valid bearer access token is required.
+      content:
+        text/plain:
+          schema:
+            type: string
+          example: "unauthorized\n"
 
     InvalidCredentials:
       description: The email or password is incorrect.

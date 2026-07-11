@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/vradovic/aether/services/api/internal/auth"
 	"github.com/vradovic/aether/services/api/internal/config"
+	"github.com/vradovic/aether/services/api/internal/contacts"
 	"github.com/vradovic/aether/services/api/internal/db"
 	"github.com/vradovic/aether/services/api/internal/users"
 )
@@ -44,9 +45,14 @@ func NewServer(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*s
 	)
 	authService := auth.NewService(queries, tokenIssuer, logger)
 	authHandler := auth.NewHandler(authService, logger)
+	authMiddleware := auth.NewMiddleware(cfg.JWTSigningKey, cfg.JWTIssuer)
+
+	contactsService := contacts.NewService(queries)
+	contactsHandler := contacts.NewHandler(contactsService, logger)
 
 	usersHandler.RegisterRoutes(mux)
 	authHandler.RegisterRoutes(mux)
+	contactsHandler.RegisterRoutes(mux, authMiddleware.Authenticate)
 
 	return &server{
 		cfg:    cfg,

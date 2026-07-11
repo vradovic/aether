@@ -9,8 +9,19 @@ import (
 )
 
 type Contact struct {
-	User1 pgtype.UUID
-	User2 pgtype.UUID
+	User1     pgtype.UUID
+	User2     pgtype.UUID
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+type ContactRequest struct {
+	ID          pgtype.UUID
+	SenderID    pgtype.UUID
+	RecipientID pgtype.UUID
+	Status      string
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
 }
 
 type User struct {
