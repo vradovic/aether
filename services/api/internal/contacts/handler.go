@@ -8,7 +8,7 @@ import (
 	"net/http"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/vradovic/aether/services/api/internal/auth"
+	"github.com/vradovic/aether/services/api/internal/shared"
 )
 
 type sendRequest struct {
@@ -43,7 +43,7 @@ func (h *handler) send(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, _ := auth.UserIDFromContext(r.Context())
+	userID, _ := shared.UserIDFromContext(r.Context())
 	requestID, err := h.service.send(r.Context(), userID, request.Username)
 	if err != nil {
 		h.writeError(w, err)
@@ -75,7 +75,7 @@ func (h *handler) mutate(w http.ResponseWriter, r *http.Request, action func(con
 		http.Error(w, "invalid contact request ID", http.StatusBadRequest)
 		return
 	}
-	userID, _ := auth.UserIDFromContext(r.Context())
+	userID, _ := shared.UserIDFromContext(r.Context())
 	if err := action(r.Context(), userID, requestID); err != nil {
 		h.writeError(w, err)
 		return

@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/vradovic/aether/services/api/internal/db"
+	"github.com/vradovic/aether/services/api/internal/shared"
 )
 
 const minPasswordLengthBytes = 8
@@ -99,11 +100,11 @@ type querier interface {
 
 type service struct {
 	querier     querier
-	tokenIssuer tokenIssuer
+	tokenIssuer shared.TokenIssuer
 	logger      *slog.Logger
 }
 
-func NewService(queries querier, tokenIssuer tokenIssuer, logger *slog.Logger) *service {
+func NewService(queries querier, tokenIssuer shared.TokenIssuer, logger *slog.Logger) *service {
 	return &service{
 		querier:     queries,
 		tokenIssuer: tokenIssuer,
@@ -126,14 +127,14 @@ func (s *service) login(ctx context.Context, input loginInput) (loginOutput, err
 		return loginOutput{}, errInvalidCredentials
 	}
 
-	token, err := s.tokenIssuer.issue(credentials.UserID.String())
+	token, err := s.tokenIssuer.Issue(credentials.UserID.String())
 	if err != nil {
 		return loginOutput{}, fmt.Errorf("issue access token: %w", err)
 	}
 
 	return loginOutput{
-		accessToken:      token.value,
-		expiresInSeconds: token.expiresInSeconds,
+		accessToken:      token.Value,
+		expiresInSeconds: token.ExpiresInSeconds,
 	}, nil
 }
 

@@ -1,4 +1,4 @@
-package auth
+package shared
 
 import (
 	"time"
@@ -6,24 +6,24 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-type issuedToken struct {
-	value            string
-	expiresInSeconds int64
+type IssuedToken struct {
+	Value            string
+	ExpiresInSeconds int64
 }
 
-type tokenIssuer interface {
-	issue(userID string) (issuedToken, error)
+type TokenIssuer interface {
+	Issue(userID string) (IssuedToken, error)
 }
 
-type accessTokenIssuer struct {
+type AccessTokenIssuer struct {
 	signingKey []byte
 	issuer     string
 	lifetime   time.Duration
 	now        func() time.Time
 }
 
-func NewAccessTokenIssuer(signingKey, issuer string, lifetime time.Duration) *accessTokenIssuer {
-	return &accessTokenIssuer{
+func NewAccessTokenIssuer(signingKey, issuer string, lifetime time.Duration) *AccessTokenIssuer {
+	return &AccessTokenIssuer{
 		signingKey: []byte(signingKey),
 		issuer:     issuer,
 		lifetime:   lifetime,
@@ -31,7 +31,7 @@ func NewAccessTokenIssuer(signingKey, issuer string, lifetime time.Duration) *ac
 	}
 }
 
-func (i *accessTokenIssuer) issue(userID string) (issuedToken, error) {
+func (i *AccessTokenIssuer) Issue(userID string) (IssuedToken, error) {
 	now := i.now().UTC()
 	claims := jwt.RegisteredClaims{
 		Issuer:    i.issuer,
@@ -42,11 +42,11 @@ func (i *accessTokenIssuer) issue(userID string) (issuedToken, error) {
 
 	value, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(i.signingKey)
 	if err != nil {
-		return issuedToken{}, err
+		return IssuedToken{}, err
 	}
 
-	return issuedToken{
-		value:            value,
-		expiresInSeconds: int64(i.lifetime / time.Second),
+	return IssuedToken{
+		Value:            value,
+		ExpiresInSeconds: int64(i.lifetime / time.Second),
 	}, nil
 }

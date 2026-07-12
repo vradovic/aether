@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/vradovic/aether/services/api/internal/db"
+	"github.com/vradovic/aether/services/api/internal/shared"
 )
 
 var testUserID = pgtype.UUID{
@@ -41,11 +42,11 @@ func (f *fakeQuerier) GetUserCredentialsByEmail(_ context.Context, email string)
 type fakeTokenIssuer struct {
 	calls  int
 	userID string
-	token  issuedToken
+	token  shared.IssuedToken
 	err    error
 }
 
-func (f *fakeTokenIssuer) issue(userID string) (issuedToken, error) {
+func (f *fakeTokenIssuer) Issue(userID string) (shared.IssuedToken, error) {
 	f.calls++
 	f.userID = userID
 	return f.token, f.err
@@ -82,9 +83,9 @@ func TestServiceLogin(t *testing.T) {
 			},
 		}
 		tokens := &fakeTokenIssuer{
-			token: issuedToken{
-				value:            "signed-token",
-				expiresInSeconds: 900,
+			token: shared.IssuedToken{
+				Value:            "signed-token",
+				ExpiresInSeconds: 900,
 			},
 		}
 		svc := &service{
@@ -108,11 +109,11 @@ func TestServiceLogin(t *testing.T) {
 		if tokens.userID != querier.credentials.UserID.String() {
 			t.Errorf("issue() user ID = %q, want %q", tokens.userID, querier.credentials.UserID.String())
 		}
-		if output.accessToken != tokens.token.value {
-			t.Errorf("login() access token = %q, want %q", output.accessToken, tokens.token.value)
+		if output.accessToken != tokens.token.Value {
+			t.Errorf("login() access token = %q, want %q", output.accessToken, tokens.token.Value)
 		}
-		if output.expiresInSeconds != tokens.token.expiresInSeconds {
-			t.Errorf("login() expires in = %d, want %d", output.expiresInSeconds, tokens.token.expiresInSeconds)
+		if output.expiresInSeconds != tokens.token.ExpiresInSeconds {
+			t.Errorf("login() expires in = %d, want %d", output.expiresInSeconds, tokens.token.ExpiresInSeconds)
 		}
 	})
 

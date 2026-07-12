@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/vradovic/aether/services/api/internal/db"
+	"github.com/vradovic/aether/services/api/internal/shared"
 )
 
 func TestHandlerLogin(t *testing.T) {
@@ -28,7 +29,7 @@ func TestHandlerLogin(t *testing.T) {
 			},
 		}
 		tokens := &fakeTokenIssuer{
-			token: issuedToken{value: "signed-token", expiresInSeconds: 900},
+			token: shared.IssuedToken{Value: "signed-token", ExpiresInSeconds: 900},
 		}
 		h := NewHandler(&service{
 			querier:     querier,

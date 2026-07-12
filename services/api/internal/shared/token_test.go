@@ -1,4 +1,4 @@
-package auth
+package shared
 
 import (
 	"testing"
@@ -17,20 +17,20 @@ func TestAccessTokenIssuerIssue(t *testing.T) {
 	issuer := NewAccessTokenIssuer(signingKey, issuerName, lifetime)
 	issuer.now = func() time.Time { return now }
 
-	issued, err := issuer.issue(userID)
+	issued, err := issuer.Issue(userID)
 	if err != nil {
 		t.Fatalf("issue() error = %v", err)
 	}
-	if issued.value == "" {
+	if issued.Value == "" {
 		t.Fatal("issue() returned an empty token")
 	}
-	if issued.expiresInSeconds != 900 {
-		t.Fatalf("issue() expires in = %d, want 900", issued.expiresInSeconds)
+	if issued.ExpiresInSeconds != 900 {
+		t.Fatalf("issue() expires in = %d, want 900", issued.ExpiresInSeconds)
 	}
 
 	claims := &jwt.RegisteredClaims{}
 	parsed, err := jwt.ParseWithClaims(
-		issued.value,
+		issued.Value,
 		claims,
 		func(token *jwt.Token) (any, error) {
 			return []byte(signingKey), nil

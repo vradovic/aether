@@ -1,4 +1,4 @@
-package auth
+package shared
 
 import (
 	"net/http"
@@ -10,7 +10,7 @@ import (
 func TestMiddlewareAuthenticate(t *testing.T) {
 	const userID = "550e8400-e29b-41d4-a716-446655440000"
 	issuer := NewAccessTokenIssuer("secret", "aether", time.Hour)
-	issued, err := issuer.issue(userID)
+	issued, err := issuer.Issue(userID)
 	if err != nil {
 		t.Fatalf("issue() error = %v", err)
 	}
@@ -22,7 +22,7 @@ func TestMiddlewareAuthenticate(t *testing.T) {
 			w.WriteHeader(http.StatusNoContent)
 		})
 		request := httptest.NewRequest(http.MethodGet, "/", nil)
-		request.Header.Set("Authorization", "Bearer "+issued.value)
+		request.Header.Set("Authorization", "Bearer "+issued.Value)
 		response := httptest.NewRecorder()
 
 		NewMiddleware("secret", "aether").Authenticate(next).ServeHTTP(response, request)
