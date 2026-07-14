@@ -12,34 +12,32 @@ import (
 )
 
 const acceptContactRequest = `-- name: AcceptContactRequest :one
-WITH accepted AS (
-    UPDATE contact_requests
-    SET status = 'accepted', updated_at = now()
-    WHERE id = $1
-      AND recipient_id = $2
-      AND status = 'pending'
-    RETURNING sender_id, recipient_id
-), inserted AS (
-    INSERT INTO contacts (user1, user2)
-    SELECT
-        LEAST(sender_id, recipient_id),
-        GREATEST(sender_id, recipient_id)
-    FROM accepted
-    ON CONFLICT DO NOTHING
-)
-SELECT EXISTS(SELECT 1 FROM accepted) AS accepted
+UPDATE contact_requests
+SET status = 'accepted', updated_at = now()
+WHERE id = $1
+  AND recipient_id = $2
+  AND status = 'pending'
+RETURNING id, sender_id, recipient_id, status, created_at, updated_at
 `
 
 type AcceptContactRequestParams struct {
-	RequestID   pgtype.UUID
+	ID          pgtype.UUID
 	RecipientID pgtype.UUID
 }
 
-func (q *Queries) AcceptContactRequest(ctx context.Context, arg AcceptContactRequestParams) (bool, error) {
-	row := q.db.QueryRow(ctx, acceptContactRequest, arg.RequestID, arg.RecipientID)
-	var accepted bool
-	err := row.Scan(&accepted)
-	return accepted, err
+// use AcceptContactRequest and InsertContact in transaction
+func (q *Queries) AcceptContactRequest(ctx context.Context, arg AcceptContactRequestParams) (ContactRequest, error) {
+	row := q.db.QueryRow(ctx, acceptContactRequest, arg.ID, arg.RecipientID)
+	var i ContactRequest
+	err := row.Scan(
+		&i.ID,
+		&i.SenderID,
+		&i.RecipientID,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const cancelContactRequest = `-- name: CancelContactRequest :one
@@ -48,19 +46,26 @@ SET status = 'cancelled', updated_at = now()
 WHERE id = $1
   AND sender_id = $2
   AND status = 'pending'
-RETURNING id
+RETURNING id, sender_id, recipient_id, status, created_at, updated_at
 `
 
 type CancelContactRequestParams struct {
-	RequestID pgtype.UUID
-	SenderID  pgtype.UUID
+	ID       pgtype.UUID
+	SenderID pgtype.UUID
 }
 
-func (q *Queries) CancelContactRequest(ctx context.Context, arg CancelContactRequestParams) (pgtype.UUID, error) {
-	row := q.db.QueryRow(ctx, cancelContactRequest, arg.RequestID, arg.SenderID)
-	var id pgtype.UUID
-	err := row.Scan(&id)
-	return id, err
+func (q *Queries) CancelContactRequest(ctx context.Context, arg CancelContactRequestParams) (ContactRequest, error) {
+	row := q.db.QueryRow(ctx, cancelContactRequest, arg.ID, arg.SenderID)
+	var i ContactRequest
+	err := row.Scan(
+		&i.ID,
+		&i.SenderID,
+		&i.RecipientID,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const declineContactRequest = `-- name: DeclineContactRequest :one
@@ -69,19 +74,106 @@ SET status = 'declined', updated_at = now()
 WHERE id = $1
   AND recipient_id = $2
   AND status = 'pending'
-RETURNING id
+RETURNING id, sender_id, recipient_id, status, created_at, updated_at
 `
 
 type DeclineContactRequestParams struct {
-	RequestID   pgtype.UUID
+	ID          pgtype.UUID
 	RecipientID pgtype.UUID
 }
 
-func (q *Queries) DeclineContactRequest(ctx context.Context, arg DeclineContactRequestParams) (pgtype.UUID, error) {
-	row := q.db.QueryRow(ctx, declineContactRequest, arg.RequestID, arg.RecipientID)
-	var id pgtype.UUID
-	err := row.Scan(&id)
-	return id, err
+func (q *Queries) DeclineContactRequest(ctx context.Context, arg DeclineContactRequestParams) (ContactRequest, error) {
+	row := q.db.QueryRow(ctx, declineContactRequest, arg.ID, arg.RecipientID)
+	var i ContactRequest
+	err := row.Scan(
+		&i.ID,
+		&i.SenderID,
+		&i.RecipientID,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const deleteContact = `-- name: DeleteContact :exec
+DELETE FROM contacts
+WHERE user1_id = LEAST($1, $2)
+  AND user2_id = GREATEST($1, $2)
+`
+
+type DeleteContactParams struct {
+	User1ID   pgtype.UUID
+	User1ID_2 pgtype.UUID
+}
+
+func (q *Queries) DeleteContact(ctx context.Context, arg DeleteContactParams) error {
+	_, err := q.db.Exec(ctx, deleteContact, arg.User1ID, arg.User1ID_2)
+	return err
+}
+
+const getContacts = `-- name: GetContacts :many
+SELECT u.id, u.username, u.first_name, u.last_name
+FROM contacts c
+INNER JOIN users u
+  ON u.id = CASE
+    WHEN c.user1_id = $1 THEN c.user2_id
+    ELSE c.user1_id
+  END
+WHERE user1_id = $1 OR user2_id = $1
+`
+
+type GetContactsRow struct {
+	ID        pgtype.UUID
+	Username  string
+	FirstName string
+	LastName  string
+}
+
+func (q *Queries) GetContacts(ctx context.Context, user1ID pgtype.UUID) ([]GetContactsRow, error) {
+	rows, err := q.db.Query(ctx, getContacts, user1ID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetContactsRow
+	for rows.Next() {
+		var i GetContactsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Username,
+			&i.FirstName,
+			&i.LastName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const insertContact = `-- name: InsertContact :one
+INSERT INTO contacts (user1_id, user2_id)
+VALUES (
+  LEAST($1, $2),
+  GREATEST($1, $2)
+)
+RETURNING user1_id, user2_id, created_at
+`
+
+type InsertContactParams struct {
+	Column1 interface{}
+	Column2 interface{}
+}
+
+func (q *Queries) InsertContact(ctx context.Context, arg InsertContactParams) (Contact, error) {
+	row := q.db.QueryRow(ctx, insertContact, arg.Column1, arg.Column2)
+	var i Contact
+	err := row.Scan(&i.User1ID, &i.User2ID, &i.CreatedAt)
+	return i, err
 }
 
 const sendContactRequest = `-- name: SendContactRequest :one
@@ -89,7 +181,7 @@ INSERT INTO contact_requests (sender_id, recipient_id)
 SELECT $1, id
 FROM users
 WHERE username = $2
-RETURNING id
+RETURNING id, sender_id, recipient_id, status, created_at, updated_at
 `
 
 type SendContactRequestParams struct {
@@ -97,9 +189,16 @@ type SendContactRequestParams struct {
 	Username string
 }
 
-func (q *Queries) SendContactRequest(ctx context.Context, arg SendContactRequestParams) (pgtype.UUID, error) {
+func (q *Queries) SendContactRequest(ctx context.Context, arg SendContactRequestParams) (ContactRequest, error) {
 	row := q.db.QueryRow(ctx, sendContactRequest, arg.SenderID, arg.Username)
-	var id pgtype.UUID
-	err := row.Scan(&id)
-	return id, err
+	var i ContactRequest
+	err := row.Scan(
+		&i.ID,
+		&i.SenderID,
+		&i.RecipientID,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

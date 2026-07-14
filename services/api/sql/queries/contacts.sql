@@ -1,40 +1,54 @@
 -- name: SendContactRequest :one
 INSERT INTO contact_requests (sender_id, recipient_id)
-SELECT sqlc.arg(sender_id), id
+SELECT $1, id
 FROM users
-WHERE username = sqlc.arg(username)
-RETURNING id;
+WHERE username = $2
+RETURNING *;
 
 -- name: CancelContactRequest :one
 UPDATE contact_requests
 SET status = 'cancelled', updated_at = now()
-WHERE id = sqlc.arg(request_id)
-  AND sender_id = sqlc.arg(sender_id)
+WHERE id = $1
+  AND sender_id = $2
   AND status = 'pending'
-RETURNING id;
+RETURNING *;
 
 -- name: DeclineContactRequest :one
 UPDATE contact_requests
 SET status = 'declined', updated_at = now()
-WHERE id = sqlc.arg(request_id)
-  AND recipient_id = sqlc.arg(recipient_id)
+WHERE id = $1
+  AND recipient_id = $2
   AND status = 'pending'
-RETURNING id;
+RETURNING *;
 
+-- use AcceptContactRequest and InsertContact in transaction
 -- name: AcceptContactRequest :one
-WITH accepted AS (
-    UPDATE contact_requests
-    SET status = 'accepted', updated_at = now()
-    WHERE id = sqlc.arg(request_id)
-      AND recipient_id = sqlc.arg(recipient_id)
-      AND status = 'pending'
-    RETURNING sender_id, recipient_id
-), inserted AS (
-    INSERT INTO contacts (user1, user2)
-    SELECT
-        LEAST(sender_id, recipient_id),
-        GREATEST(sender_id, recipient_id)
-    FROM accepted
-    ON CONFLICT DO NOTHING
+UPDATE contact_requests
+SET status = 'accepted', updated_at = now()
+WHERE id = $1
+  AND recipient_id = $2
+  AND status = 'pending'
+RETURNING *;
+
+-- name: InsertContact :one
+INSERT INTO contacts (user1_id, user2_id)
+VALUES (
+  LEAST($1, $2),
+  GREATEST($1, $2)
 )
-SELECT EXISTS(SELECT 1 FROM accepted) AS accepted;
+RETURNING *;
+
+-- name: GetContacts :many
+SELECT u.id, u.username, u.first_name, u.last_name
+FROM contacts c
+INNER JOIN users u
+  ON u.id = CASE
+    WHEN c.user1_id = $1 THEN c.user2_id
+    ELSE c.user1_id
+  END
+WHERE user1_id = $1 OR user2_id = $1;
+
+-- name: DeleteContact :exec
+DELETE FROM contacts
+WHERE user1_id = LEAST($1, $2)
+  AND user2_id = GREATEST($1, $2);

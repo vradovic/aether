@@ -9,10 +9,9 @@ import (
 )
 
 type Contact struct {
-	User1     pgtype.UUID
-	User2     pgtype.UUID
+	User1ID   pgtype.UUID
+	User2ID   pgtype.UUID
 	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
 }
 
 type ContactRequest struct {
@@ -24,13 +23,49 @@ type ContactRequest struct {
 	UpdatedAt   pgtype.Timestamptz
 }
 
+type Conversation struct {
+	ID                  pgtype.UUID
+	Name                pgtype.Text
+	CreatedBy           pgtype.UUID
+	LastMessageSequence int64
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
+}
+
+type ConversationParticipant struct {
+	ConversationID pgtype.UUID
+	UserID         pgtype.UUID
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+type EventsOutbox struct {
+	ID          int64
+	EventType   string
+	Subject     string
+	Payload     []byte
+	CreatedAt   pgtype.Timestamptz
+	PublishedAt pgtype.Timestamptz
+}
+
+type Message struct {
+	ID              pgtype.UUID
+	ConversationID  pgtype.UUID
+	SenderID        pgtype.UUID
+	ClientMessageID pgtype.UUID
+	MessageSequence int64
+	Body            string
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+}
+
 type User struct {
 	ID           pgtype.UUID
+	Username     string
 	Email        string
 	PasswordHash string
 	FirstName    string
 	LastName     string
 	CreatedAt    pgtype.Timestamptz
 	UpdatedAt    pgtype.Timestamptz
-	Username     string
 }
