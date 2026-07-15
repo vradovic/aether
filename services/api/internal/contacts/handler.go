@@ -91,7 +91,7 @@ func (h *handler) writeError(w http.ResponseWriter, err error) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	case errors.Is(err, ErrPendingRequestExists):
 		http.Error(w, err.Error(), http.StatusConflict)
-	case errors.Is(err, ErrInvalidUserID):
+	case errors.Is(err, shared.ErrInvalidID):
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 	default:
 		h.logger.Error("contact request operation failed", "err", err)

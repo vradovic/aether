@@ -36,3 +36,16 @@ WHERE EXISTS (
         AND created_by = $3
 )
 RETURNING *;
+
+-- name: IsConversationParticipant :one
+SELECT EXISTS (
+    SELECT 1
+    FROM conversation_participants
+    WHERE conversation_id = $1 AND user_id = $2
+);
+
+-- name: GetConversationRecipientIDs :many
+SELECT user_id
+FROM conversation_participants
+WHERE conversation_id = $1
+ORDER BY user_id;

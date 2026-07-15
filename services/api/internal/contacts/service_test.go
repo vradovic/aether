@@ -25,30 +25,29 @@ type fakeQuerier struct {
 	cancelParams  db.CancelContactRequestParams
 	cancelErr     error
 	acceptParams  db.AcceptContactRequestParams
-	accepted      bool
 	acceptErr     error
 	declineParams db.DeclineContactRequestParams
 	declineErr    error
 }
 
-func (f *fakeQuerier) SendContactRequest(_ context.Context, params db.SendContactRequestParams) (pgtype.UUID, error) {
+func (f *fakeQuerier) SendContactRequest(_ context.Context, params db.SendContactRequestParams) (db.ContactRequest, error) {
 	f.sendParams = params
-	return f.sendID, f.sendErr
+	return db.ContactRequest{ID: f.sendID}, f.sendErr
 }
 
-func (f *fakeQuerier) CancelContactRequest(_ context.Context, params db.CancelContactRequestParams) (pgtype.UUID, error) {
+func (f *fakeQuerier) CancelContactRequest(_ context.Context, params db.CancelContactRequestParams) (db.ContactRequest, error) {
 	f.cancelParams = params
-	return params.RequestID, f.cancelErr
+	return db.ContactRequest{ID: params.ID}, f.cancelErr
 }
 
-func (f *fakeQuerier) AcceptContactRequest(_ context.Context, params db.AcceptContactRequestParams) (bool, error) {
+func (f *fakeQuerier) AcceptContactRequest(_ context.Context, params db.AcceptContactRequestParams) (db.ContactRequest, error) {
 	f.acceptParams = params
-	return f.accepted, f.acceptErr
+	return db.ContactRequest{ID: params.ID}, f.acceptErr
 }
 
-func (f *fakeQuerier) DeclineContactRequest(_ context.Context, params db.DeclineContactRequestParams) (pgtype.UUID, error) {
+func (f *fakeQuerier) DeclineContactRequest(_ context.Context, params db.DeclineContactRequestParams) (db.ContactRequest, error) {
 	f.declineParams = params
-	return params.RequestID, f.declineErr
+	return db.ContactRequest{ID: params.ID}, f.declineErr
 }
 
 func TestServiceSend(t *testing.T) {
@@ -94,17 +93,17 @@ func TestServiceMutations(t *testing.T) {
 		if err := NewService(queries).cancel(context.Background(), testUserID, testRequestID); err != nil {
 			t.Fatalf("cancel() error = %v", err)
 		}
-		if queries.cancelParams.SenderID.String() != testUserID || queries.cancelParams.RequestID != testRequestID {
+		if queries.cancelParams.SenderID.String() != testUserID || queries.cancelParams.ID != testRequestID {
 			t.Errorf("cancel params = %#v", queries.cancelParams)
 		}
 	})
 
 	t.Run("accept uses recipient identity", func(t *testing.T) {
-		queries := &fakeQuerier{accepted: true}
+		queries := &fakeQuerier{}
 		if err := NewService(queries).accept(context.Background(), testUserID, testRequestID); err != nil {
 			t.Fatalf("accept() error = %v", err)
 		}
-		if queries.acceptParams.RecipientID.String() != testUserID || queries.acceptParams.RequestID != testRequestID {
+		if queries.acceptParams.RecipientID.String() != testUserID || queries.acceptParams.ID != testRequestID {
 			t.Errorf("accept params = %#v", queries.acceptParams)
 		}
 	})
@@ -114,13 +113,13 @@ func TestServiceMutations(t *testing.T) {
 		if err := NewService(queries).decline(context.Background(), testUserID, testRequestID); err != nil {
 			t.Fatalf("decline() error = %v", err)
 		}
-		if queries.declineParams.RecipientID.String() != testUserID || queries.declineParams.RequestID != testRequestID {
+		if queries.declineParams.RecipientID.String() != testUserID || queries.declineParams.ID != testRequestID {
 			t.Errorf("decline params = %#v", queries.declineParams)
 		}
 	})
 
 	t.Run("missing or unauthorized request is not found", func(t *testing.T) {
-		queries := &fakeQuerier{cancelErr: pgx.ErrNoRows, declineErr: pgx.ErrNoRows}
+		queries := &fakeQuerier{cancelErr: pgx.ErrNoRows, acceptErr: pgx.ErrNoRows, declineErr: pgx.ErrNoRows}
 		service := NewService(queries)
 		if err := service.cancel(context.Background(), testUserID, testRequestID); !errors.Is(err, ErrRequestNotFound) {
 			t.Errorf("cancel() error = %v, want %v", err, ErrRequestNotFound)

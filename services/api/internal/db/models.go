@@ -39,15 +39,6 @@ type ConversationParticipant struct {
 	UpdatedAt      pgtype.Timestamptz
 }
 
-type EventsOutbox struct {
-	ID          int64
-	EventType   string
-	Subject     string
-	Payload     []byte
-	CreatedAt   pgtype.Timestamptz
-	PublishedAt pgtype.Timestamptz
-}
-
 type Message struct {
 	ID              pgtype.UUID
 	ConversationID  pgtype.UUID

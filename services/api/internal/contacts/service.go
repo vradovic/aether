@@ -10,19 +10,19 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/vradovic/aether/services/api/internal/db"
+	"github.com/vradovic/aether/services/api/internal/shared"
 )
 
 var ErrUserNotFound = errors.New("user not found")
 var ErrSelfRequest = errors.New("cannot send a contact request to yourself")
 var ErrPendingRequestExists = errors.New("a pending contact request already exists")
 var ErrRequestNotFound = errors.New("contact request not found")
-var ErrInvalidUserID = errors.New("invalid authenticated user ID")
 
 type querier interface {
-	SendContactRequest(context.Context, db.SendContactRequestParams) (pgtype.UUID, error)
-	CancelContactRequest(context.Context, db.CancelContactRequestParams) (pgtype.UUID, error)
-	AcceptContactRequest(context.Context, db.AcceptContactRequestParams) (bool, error)
-	DeclineContactRequest(context.Context, db.DeclineContactRequestParams) (pgtype.UUID, error)
+	SendContactRequest(context.Context, db.SendContactRequestParams) (db.ContactRequest, error)
+	CancelContactRequest(context.Context, db.CancelContactRequestParams) (db.ContactRequest, error)
+	AcceptContactRequest(context.Context, db.AcceptContactRequestParams) (db.ContactRequest, error)
+	DeclineContactRequest(context.Context, db.DeclineContactRequestParams) (db.ContactRequest, error)
 }
 
 type service struct {
@@ -33,21 +33,13 @@ func NewService(queries querier) *service {
 	return &service{queries: queries}
 }
 
-func parseUserID(value string) (pgtype.UUID, error) {
-	var id pgtype.UUID
-	if err := id.Scan(value); err != nil || !id.Valid {
-		return pgtype.UUID{}, ErrInvalidUserID
-	}
-	return id, nil
-}
-
 func (s *service) send(ctx context.Context, userID, username string) (pgtype.UUID, error) {
-	senderID, err := parseUserID(userID)
+	senderID, err := shared.ParseUUID(userID)
 	if err != nil {
 		return pgtype.UUID{}, err
 	}
 
-	requestID, err := s.queries.SendContactRequest(ctx, db.SendContactRequestParams{
+	request, err := s.queries.SendContactRequest(ctx, db.SendContactRequestParams{
 		SenderID: senderID,
 		Username: strings.TrimSpace(username),
 	})
@@ -66,39 +58,33 @@ func (s *service) send(ctx context.Context, userID, username string) (pgtype.UUI
 	if err != nil {
 		return pgtype.UUID{}, fmt.Errorf("send contact request: %w", err)
 	}
-	return requestID, nil
+	return request.ID, nil
 }
 
 func (s *service) cancel(ctx context.Context, userID string, requestID pgtype.UUID) error {
-	senderID, err := parseUserID(userID)
+	senderID, err := shared.ParseUUID(userID)
 	if err != nil {
 		return err
 	}
-	_, err = s.queries.CancelContactRequest(ctx, db.CancelContactRequestParams{RequestID: requestID, SenderID: senderID})
+	_, err = s.queries.CancelContactRequest(ctx, db.CancelContactRequestParams{ID: requestID, SenderID: senderID})
 	return mapRequestMutationError("cancel contact request", err)
 }
 
 func (s *service) accept(ctx context.Context, userID string, requestID pgtype.UUID) error {
-	recipientID, err := parseUserID(userID)
+	recipientID, err := shared.ParseUUID(userID)
 	if err != nil {
 		return err
 	}
-	accepted, err := s.queries.AcceptContactRequest(ctx, db.AcceptContactRequestParams{RequestID: requestID, RecipientID: recipientID})
-	if err != nil {
-		return fmt.Errorf("accept contact request: %w", err)
-	}
-	if !accepted {
-		return ErrRequestNotFound
-	}
-	return nil
+	_, err = s.queries.AcceptContactRequest(ctx, db.AcceptContactRequestParams{ID: requestID, RecipientID: recipientID})
+	return mapRequestMutationError("accept contact request", err)
 }
 
 func (s *service) decline(ctx context.Context, userID string, requestID pgtype.UUID) error {
-	recipientID, err := parseUserID(userID)
+	recipientID, err := shared.ParseUUID(userID)
 	if err != nil {
 		return err
 	}
-	_, err = s.queries.DeclineContactRequest(ctx, db.DeclineContactRequestParams{RequestID: requestID, RecipientID: recipientID})
+	_, err = s.queries.DeclineContactRequest(ctx, db.DeclineContactRequestParams{ID: requestID, RecipientID: recipientID})
 	return mapRequestMutationError("decline contact request", err)
 }
 

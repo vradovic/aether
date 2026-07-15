@@ -71,13 +71,13 @@ func TestHandlerContactRequestMutations(t *testing.T) {
 		path   string
 		check  func(*fakeQuerier) bool
 	}{
-		{name: "cancel", method: http.MethodDelete, path: "/contact-requests/" + testRequestID.String(), check: func(q *fakeQuerier) bool { return q.cancelParams.RequestID == testRequestID }},
-		{name: "accept", method: http.MethodPost, path: "/contact-requests/" + testRequestID.String() + "/accept", check: func(q *fakeQuerier) bool { return q.acceptParams.RequestID == testRequestID }},
-		{name: "decline", method: http.MethodPost, path: "/contact-requests/" + testRequestID.String() + "/decline", check: func(q *fakeQuerier) bool { return q.declineParams.RequestID == testRequestID }},
+		{name: "cancel", method: http.MethodDelete, path: "/contact-requests/" + testRequestID.String(), check: func(q *fakeQuerier) bool { return q.cancelParams.ID == testRequestID }},
+		{name: "accept", method: http.MethodPost, path: "/contact-requests/" + testRequestID.String() + "/accept", check: func(q *fakeQuerier) bool { return q.acceptParams.ID == testRequestID }},
+		{name: "decline", method: http.MethodPost, path: "/contact-requests/" + testRequestID.String() + "/decline", check: func(q *fakeQuerier) bool { return q.declineParams.ID == testRequestID }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			queries := &fakeQuerier{accepted: true}
+			queries := &fakeQuerier{}
 			request := httptest.NewRequest(tt.method, tt.path, nil)
 			request.Header.Set("Authorization", "Bearer "+bearerToken(t))
 			response := httptest.NewRecorder()

@@ -2,11 +2,15 @@ package shared
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+var ErrInvalidID = errors.New("invalid id")
 
 type userIDContextKey struct{}
 
@@ -50,4 +54,12 @@ func (m *Middleware) Authenticate(next http.Handler) http.Handler {
 func UserIDFromContext(ctx context.Context) (string, bool) {
 	userID, ok := ctx.Value(userIDContextKey{}).(string)
 	return userID, ok && userID != ""
+}
+
+func ParseUUID(value string) (pgtype.UUID, error) {
+	var id pgtype.UUID
+	if err := id.Scan(value); err != nil || !id.Valid {
+		return pgtype.UUID{}, ErrInvalidID
+	}
+	return id, nil
 }

@@ -21,6 +21,33 @@ func (q *Queries) DeleteConversation(ctx context.Context, id pgtype.UUID) error 
 	return err
 }
 
+const getConversationRecipientIDs = `-- name: GetConversationRecipientIDs :many
+SELECT user_id
+FROM conversation_participants
+WHERE conversation_id = $1
+ORDER BY user_id
+`
+
+func (q *Queries) GetConversationRecipientIDs(ctx context.Context, conversationID pgtype.UUID) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, getConversationRecipientIDs, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var user_id pgtype.UUID
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getConversationsForUser = `-- name: GetConversationsForUser :many
 SELECT c.id, c.name, c.created_by, c.last_message_sequence, c.created_at, c.updated_at
 FROM conversations c
@@ -109,6 +136,26 @@ func (q *Queries) InsertConversationParticipant(ctx context.Context, arg InsertC
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const isConversationParticipant = `-- name: IsConversationParticipant :one
+SELECT EXISTS (
+    SELECT 1
+    FROM conversation_participants
+    WHERE conversation_id = $1 AND user_id = $2
+)
+`
+
+type IsConversationParticipantParams struct {
+	ConversationID pgtype.UUID
+	UserID         pgtype.UUID
+}
+
+func (q *Queries) IsConversationParticipant(ctx context.Context, arg IsConversationParticipantParams) (bool, error) {
+	row := q.db.QueryRow(ctx, isConversationParticipant, arg.ConversationID, arg.UserID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const nextMessageSequence = `-- name: NextMessageSequence :one
