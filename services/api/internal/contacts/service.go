@@ -9,8 +9,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/vradovic/aether/services/api/internal/core"
 	"github.com/vradovic/aether/services/api/internal/db"
-	"github.com/vradovic/aether/services/api/internal/shared"
 )
 
 var ErrUserNotFound = errors.New("user not found")
@@ -34,7 +34,7 @@ func NewService(queries querier) *service {
 }
 
 func (s *service) send(ctx context.Context, userID, username string) (pgtype.UUID, error) {
-	senderID, err := shared.ParseUUID(userID)
+	senderID, err := core.ParseUUID(userID)
 	if err != nil {
 		return pgtype.UUID{}, err
 	}
@@ -62,7 +62,7 @@ func (s *service) send(ctx context.Context, userID, username string) (pgtype.UUI
 }
 
 func (s *service) cancel(ctx context.Context, userID string, requestID pgtype.UUID) error {
-	senderID, err := shared.ParseUUID(userID)
+	senderID, err := core.ParseUUID(userID)
 	if err != nil {
 		return err
 	}
@@ -71,7 +71,7 @@ func (s *service) cancel(ctx context.Context, userID string, requestID pgtype.UU
 }
 
 func (s *service) accept(ctx context.Context, userID string, requestID pgtype.UUID) error {
-	recipientID, err := shared.ParseUUID(userID)
+	recipientID, err := core.ParseUUID(userID)
 	if err != nil {
 		return err
 	}
@@ -80,7 +80,7 @@ func (s *service) accept(ctx context.Context, userID string, requestID pgtype.UU
 }
 
 func (s *service) decline(ctx context.Context, userID string, requestID pgtype.UUID) error {
-	recipientID, err := shared.ParseUUID(userID)
+	recipientID, err := core.ParseUUID(userID)
 	if err != nil {
 		return err
 	}

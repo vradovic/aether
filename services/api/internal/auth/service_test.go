@@ -8,8 +8,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/vradovic/aether/services/api/internal/core"
 	"github.com/vradovic/aether/services/api/internal/db"
-	"github.com/vradovic/aether/services/api/internal/shared"
 )
 
 var testUserID = pgtype.UUID{
@@ -42,11 +42,11 @@ func (f *fakeQuerier) GetUserCredentialsByEmail(_ context.Context, email string)
 type fakeTokenIssuer struct {
 	calls  int
 	userID string
-	token  shared.IssuedToken
+	token  core.IssuedToken
 	err    error
 }
 
-func (f *fakeTokenIssuer) Issue(userID string) (shared.IssuedToken, error) {
+func (f *fakeTokenIssuer) Issue(userID string) (core.IssuedToken, error) {
 	f.calls++
 	f.userID = userID
 	return f.token, f.err
@@ -83,7 +83,7 @@ func TestServiceLogin(t *testing.T) {
 			},
 		}
 		tokens := &fakeTokenIssuer{
-			token: shared.IssuedToken{
+			token: core.IssuedToken{
 				Value:            "signed-token",
 				ExpiresInSeconds: 900,
 			},

@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/websocket"
-	"github.com/vradovic/aether/services/api/internal/shared"
+	"github.com/vradovic/aether/services/api/internal/core"
 )
 
 var upgrader = websocket.Upgrader{
@@ -14,7 +14,7 @@ var upgrader = websocket.Upgrader{
 }
 
 func ServeWs(w http.ResponseWriter, r *http.Request, logger *slog.Logger, manager *manager) {
-	userID, ok := shared.UserIDFromContext(r.Context())
+	userID, ok := core.UserIDFromContext(r.Context())
 	if !ok {
 		http.Error(w, "invalid user", http.StatusUnauthorized)
 		return

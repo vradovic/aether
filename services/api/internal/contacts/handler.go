@@ -8,7 +8,7 @@ import (
 	"net/http"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/vradovic/aether/services/api/internal/shared"
+	"github.com/vradovic/aether/services/api/internal/core"
 )
 
 type sendRequest struct {
@@ -43,7 +43,7 @@ func (h *handler) send(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, _ := shared.UserIDFromContext(r.Context())
+	userID, _ := core.UserIDFromContext(r.Context())
 	requestID, err := h.service.send(r.Context(), userID, request.Username)
 	if err != nil {
 		h.writeError(w, err)
@@ -75,7 +75,7 @@ func (h *handler) mutate(w http.ResponseWriter, r *http.Request, action func(con
 		http.Error(w, "invalid contact request ID", http.StatusBadRequest)
 		return
 	}
-	userID, _ := shared.UserIDFromContext(r.Context())
+	userID, _ := core.UserIDFromContext(r.Context())
 	if err := action(r.Context(), userID, requestID); err != nil {
 		h.writeError(w, err)
 		return
@@ -91,7 +91,7 @@ func (h *handler) writeError(w http.ResponseWriter, err error) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	case errors.Is(err, ErrPendingRequestExists):
 		http.Error(w, err.Error(), http.StatusConflict)
-	case errors.Is(err, shared.ErrInvalidID):
+	case errors.Is(err, core.ErrInvalidID):
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 	default:
 		h.logger.Error("contact request operation failed", "err", err)

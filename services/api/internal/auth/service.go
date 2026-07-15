@@ -10,8 +10,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/vradovic/aether/services/api/internal/core"
 	"github.com/vradovic/aether/services/api/internal/db"
-	"github.com/vradovic/aether/services/api/internal/shared"
 )
 
 const minPasswordLengthBytes = 8
@@ -100,11 +100,11 @@ type querier interface {
 
 type service struct {
 	querier     querier
-	tokenIssuer shared.TokenIssuer
+	tokenIssuer core.TokenIssuer
 	logger      *slog.Logger
 }
 
-func NewService(queries querier, tokenIssuer shared.TokenIssuer, logger *slog.Logger) *service {
+func NewService(queries querier, tokenIssuer core.TokenIssuer, logger *slog.Logger) *service {
 	return &service{
 		querier:     queries,
 		tokenIssuer: tokenIssuer,

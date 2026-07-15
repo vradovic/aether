@@ -11,7 +11,7 @@ import (
 	"github.com/vradovic/aether/services/api/internal/config"
 	"github.com/vradovic/aether/services/api/internal/contacts"
 	"github.com/vradovic/aether/services/api/internal/db"
-	"github.com/vradovic/aether/services/api/internal/shared"
+	"github.com/vradovic/aether/services/api/internal/core"
 	"github.com/vradovic/aether/services/api/internal/users"
 )
 
@@ -39,14 +39,14 @@ func NewServer(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*s
 	usersService := users.NewService(queries, logger)
 	usersHandler := users.NewHandler(usersService, logger)
 
-	tokenIssuer := shared.NewAccessTokenIssuer(
+	tokenIssuer := core.NewAccessTokenIssuer(
 		cfg.JWTSigningKey,
 		cfg.JWTIssuer,
 		cfg.JWTAccessTokenTTL,
 	)
 	authService := auth.NewService(queries, tokenIssuer, logger)
 	authHandler := auth.NewHandler(authService, logger)
-	authMiddleware := shared.NewMiddleware(cfg.JWTSigningKey, cfg.JWTIssuer)
+	authMiddleware := core.NewMiddleware(cfg.JWTSigningKey, cfg.JWTIssuer)
 
 	contactsService := contacts.NewService(queries)
 	contactsHandler := contacts.NewHandler(contactsService, logger)

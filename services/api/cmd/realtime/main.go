@@ -13,9 +13,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go"
+	"github.com/vradovic/aether/services/api/internal/core"
 	"github.com/vradovic/aether/services/api/internal/db"
 	"github.com/vradovic/aether/services/api/internal/realtime"
-	"github.com/vradovic/aether/services/api/internal/shared"
 )
 
 func main() {
@@ -62,7 +62,7 @@ func run(logger *slog.Logger) error {
 	defer nc.Close()
 
 	manager := realtime.NewManager(ctx, nc, pool, queries, logger)
-	authMiddleware := shared.NewMiddleware(cfg.JWTSigningKey, cfg.JWTIssuer)
+	authMiddleware := core.NewMiddleware(cfg.JWTSigningKey, cfg.JWTIssuer)
 	mux := http.NewServeMux()
 
 	wsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

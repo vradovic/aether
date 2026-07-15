@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go"
 	"github.com/vradovic/aether/services/api/internal/db"
-	"github.com/vradovic/aether/services/api/internal/shared"
+	"github.com/vradovic/aether/services/api/internal/core"
 )
 
 const (
@@ -138,12 +138,12 @@ func (m *manager) Run() error {
 }
 
 func (m *manager) validateParticipant(conversationIDString, userIDString string) (bool, error) {
-	conversationID, err := shared.ParseUUID(conversationIDString)
+	conversationID, err := core.ParseUUID(conversationIDString)
 	if err != nil {
 		return false, err
 	}
 
-	userID, err := shared.ParseUUID(userIDString)
+	userID, err := core.ParseUUID(userIDString)
 	if err != nil {
 		return false, err
 	}
@@ -160,7 +160,7 @@ func (m *manager) validateParticipant(conversationIDString, userIDString string)
 }
 
 func (m *manager) getRecipients(conversationIDString string) ([]string, error) {
-	conversationID, err := shared.ParseUUID(conversationIDString)
+	conversationID, err := core.ParseUUID(conversationIDString)
 	if err != nil {
 		return nil, err
 	}
@@ -179,17 +179,17 @@ func (m *manager) getRecipients(conversationIDString string) ([]string, error) {
 }
 
 func (m *manager) insertMessage(msg publishMessage) (publishMessage, error) {
-	conversationID, err := shared.ParseUUID(msg.ConversationID)
+	conversationID, err := core.ParseUUID(msg.ConversationID)
 	if err != nil {
 		return publishMessage{}, err
 	}
 
-	senderID, err := shared.ParseUUID(msg.SenderID)
+	senderID, err := core.ParseUUID(msg.SenderID)
 	if err != nil {
 		return publishMessage{}, err
 	}
 
-	clientMessageID, err := shared.ParseUUID(msg.ClientMessageID)
+	clientMessageID, err := core.ParseUUID(msg.ClientMessageID)
 	if err != nil {
 		return publishMessage{}, err
 	}

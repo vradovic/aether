@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/vradovic/aether/services/api/internal/shared"
+	"github.com/vradovic/aether/services/api/internal/core"
 )
 
 func bearerToken(t *testing.T) string {
@@ -33,7 +33,7 @@ func testHandler(t *testing.T, queries *fakeQuerier) *http.ServeMux {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	h := NewHandler(NewService(queries), logger)
 	mux := http.NewServeMux()
-	h.RegisterRoutes(mux, shared.NewMiddleware("secret", "aether").Authenticate)
+	h.RegisterRoutes(mux, core.NewMiddleware("secret", "aether").Authenticate)
 	return mux
 }
 
