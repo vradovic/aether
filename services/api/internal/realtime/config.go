@@ -12,7 +12,7 @@ type config struct {
 	DbAddress     string
 	NatsAddress   string
 	JWTSigningKey string
-	JWTIssuer     string
+	NATSSubject   string
 }
 
 func LoadConfig() (config, error) {
@@ -21,7 +21,7 @@ func LoadConfig() (config, error) {
 		DbAddress:     os.Getenv("DB_ADDRESS"),
 		NatsAddress:   os.Getenv("NATS_ADDRESS"),
 		JWTSigningKey: os.Getenv("JWT_SIGNING_KEY"),
-		JWTIssuer:     os.Getenv("JWT_ISSUER"),
+		NATSSubject:   os.Getenv("NATS_SUBJECT"),
 	}
 
 	if cfg.ServerAddress == "" {
@@ -41,10 +41,6 @@ func LoadConfig() (config, error) {
 	}
 	if len(cfg.JWTSigningKey) < minJWTSigningKeyLengthBytes {
 		return config{}, fmt.Errorf("JWT_SIGNING_KEY must be at least %d bytes", minJWTSigningKeyLengthBytes)
-	}
-
-	if cfg.JWTIssuer == "" {
-		return config{}, fmt.Errorf("JWT_ISSUER is required")
 	}
 
 	return cfg, nil

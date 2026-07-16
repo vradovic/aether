@@ -50,3 +50,32 @@ func (i *AccessTokenIssuer) Issue(userID string) (IssuedToken, error) {
 		ExpiresInSeconds: int64(i.lifetime / time.Second),
 	}, nil
 }
+
+func ParseTokenClaims(tokenString, secret string) (jwt.Claims, error) {
+	claims := &jwt.RegisteredClaims{}
+
+	_, err := jwt.ParseWithClaims(
+		tokenString,
+		claims,
+		func(t *jwt.Token) (any, error) {
+			return secret, nil
+		},
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+	)
+
+	return claims, err
+}
+
+func ParseTokenSubject(tokenString, secret string) (string, error) {
+	claims, err := ParseTokenClaims(tokenString, secret)
+	if err != nil {
+		return "", err
+	}
+
+	sub, err := claims.GetSubject()
+	if err != nil {
+		return "", nil
+	}
+
+	return sub, nil
+}

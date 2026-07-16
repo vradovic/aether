@@ -1,6 +1,7 @@
 package realtime
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 
@@ -13,10 +14,16 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
-func ServeWs(w http.ResponseWriter, r *http.Request, logger *slog.Logger, manager *manager) {
-	userID, ok := core.UserIDFromContext(r.Context())
-	if !ok {
-		http.Error(w, "invalid user", http.StatusUnauthorized)
+func ServeWs(w http.ResponseWriter, r *http.Request, logger *slog.Logger, publisher publisher, router router, secret string) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.Error(w, "must include token", http.StatusBadRequest)
+		return
+	}
+
+	userID, err := core.ParseTokenSubject(token, secret)
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -26,16 +33,20 @@ func ServeWs(w http.ResponseWriter, r *http.Request, logger *slog.Logger, manage
 		return
 	}
 
-	// register conversations and connection
-	c := &client{
-		conn:    conn,
-		send:    make(chan outboundMessage, 64),
-		userID:  userID,
-		manager: manager,
-	}
-	manager.register <- c
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
 
-	// start pumps
-	go c.readPump(logger)
-	go c.writePump(logger)
+	c := &client{
+		conn:      conn,
+		send:      make(chan outboundMessage, 64),
+		userID:    userID,
+		logger:    logger,
+		publisher: publisher,
+		router:    router,
+	}
+
+	router.register <- c
+
+	go c.writePump()
+	c.readPump(ctx)
 }

@@ -1,6 +1,7 @@
 package realtime
 
 import (
+	"context"
 	"log/slog"
 	"time"
 
@@ -16,15 +17,17 @@ const (
 )
 
 type client struct {
-	conn    *websocket.Conn
-	send    chan outboundMessage
-	userID  string
-	manager *manager
+	logger    *slog.Logger
+	userID    string
+	conn      *websocket.Conn
+	send      chan outboundMessage
+	publisher publisher
+	router    router
 }
 
-func (c *client) readPump(logger *slog.Logger) {
+func (c *client) readPump(ctx context.Context) {
 	defer func() {
-		c.manager.unregister <- c
+		c.router.unregister <- c
 		c.conn.Close()
 	}()
 	c.conn.SetReadLimit(maxMessageSize)
@@ -35,22 +38,21 @@ func (c *client) readPump(logger *slog.Logger) {
 		var msg inboundMessage
 		err := c.conn.ReadJSON(&msg)
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				logger.Warn("websocket read failed", "error", err)
-			}
-
+			c.logger.Warn("read message fail", "error", err)
 			return
 		}
 
-		c.manager.publish <- publishMessage{
+		if err := c.publisher.publish(ctx, publishMessage{
 			inboundMessage: msg,
 			SenderID:       c.userID,
-			// MessageSequence gets set by manager
+			// MessageSequence gets set by publisher
+		}); err != nil {
+
 		}
 	}
 }
 
-func (c *client) writePump(logger *slog.Logger) {
+func (c *client) writePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
@@ -68,7 +70,7 @@ func (c *client) writePump(logger *slog.Logger) {
 
 			err := c.conn.WriteJSON(msg)
 			if err != nil {
-				logger.Warn("websocket write failed", "error", err)
+				c.logger.Warn("websocket write failed", "error", err)
 				return
 			}
 		case <-ticker.C:
