@@ -1,4 +1,4 @@
-package config
+package api
 
 import (
 	"fmt"
@@ -16,7 +16,7 @@ type Config struct {
 	JWTAccessTokenTTL time.Duration
 }
 
-func Load() (*Config, error) {
+func LoadConfig() (*Config, error) {
 	cfg := &Config{
 		ServerAddress: os.Getenv("SERVER_ADDRESS"),
 		DbAddress:     os.Getenv("DB_ADDRESS"),

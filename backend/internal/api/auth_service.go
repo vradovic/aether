@@ -1,4 +1,4 @@
-package auth
+package api
 
 import (
 	"context"
@@ -93,26 +93,26 @@ func (r registerInput) validate() error {
 	return nil
 }
 
-type querier interface {
+type authQuerier interface {
 	CreateUser(ctx context.Context, arg db.CreateUserParams) error
 	GetUserCredentialsByEmail(ctx context.Context, email string) (db.GetUserCredentialsByEmailRow, error)
 }
 
-type service struct {
-	querier     querier
+type authService struct {
+	querier     authQuerier
 	tokenIssuer core.TokenIssuer
 	logger      *slog.Logger
 }
 
-func NewService(queries querier, tokenIssuer core.TokenIssuer, logger *slog.Logger) *service {
-	return &service{
+func NewAuthService(queries authQuerier, tokenIssuer core.TokenIssuer, logger *slog.Logger) *authService {
+	return &authService{
 		querier:     queries,
 		tokenIssuer: tokenIssuer,
 		logger:      logger,
 	}
 }
 
-func (s *service) login(ctx context.Context, input loginInput) (loginOutput, error) {
+func (s *authService) login(ctx context.Context, input loginInput) (loginOutput, error) {
 	input = input.normalize()
 
 	credentials, err := s.querier.GetUserCredentialsByEmail(ctx, input.email)
@@ -138,7 +138,7 @@ func (s *service) login(ctx context.Context, input loginInput) (loginOutput, err
 	}, nil
 }
 
-func (s *service) register(ctx context.Context, input registerInput) error {
+func (s *authService) register(ctx context.Context, input registerInput) error {
 	input = input.normalize()
 	if err := input.validate(); err != nil {
 		return err

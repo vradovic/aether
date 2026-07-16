@@ -1,4 +1,4 @@
-package server
+package api
 
 import (
 	"context"
@@ -7,22 +7,18 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/vradovic/aether/services/api/internal/auth"
-	"github.com/vradovic/aether/services/api/internal/config"
-	"github.com/vradovic/aether/services/api/internal/contacts"
-	"github.com/vradovic/aether/services/api/internal/db"
 	"github.com/vradovic/aether/services/api/internal/core"
-	"github.com/vradovic/aether/services/api/internal/users"
+	"github.com/vradovic/aether/services/api/internal/db"
 )
 
 type server struct {
-	cfg    *config.Config
+	cfg    *Config
 	logger *slog.Logger
 	mux    *http.ServeMux
 	pool   *pgxpool.Pool
 }
 
-func NewServer(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*server, error) {
+func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*server, error) {
 	mux := http.NewServeMux()
 
 	pool, err := pgxpool.New(ctx, cfg.DbAddress)
@@ -36,20 +32,20 @@ func NewServer(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*s
 
 	queries := db.New(pool)
 
-	usersService := users.NewService(queries, logger)
-	usersHandler := users.NewHandler(usersService, logger)
+	usersService := NewUsersService(queries, logger)
+	usersHandler := NewUsersHandler(usersService, logger)
 
 	tokenIssuer := core.NewAccessTokenIssuer(
 		cfg.JWTSigningKey,
 		cfg.JWTIssuer,
 		cfg.JWTAccessTokenTTL,
 	)
-	authService := auth.NewService(queries, tokenIssuer, logger)
-	authHandler := auth.NewHandler(authService, logger)
+	authService := NewAuthService(queries, tokenIssuer, logger)
+	authHandler := NewAuthHandler(authService, logger)
 	authMiddleware := core.NewMiddleware(cfg.JWTSigningKey, cfg.JWTIssuer)
 
-	contactsService := contacts.NewService(queries)
-	contactsHandler := contacts.NewHandler(contactsService, logger)
+	contactsService := NewContactsService(queries)
+	contactsHandler := NewContactsHandler(contactsService, logger)
 
 	usersHandler.RegisterRoutes(mux)
 	authHandler.RegisterRoutes(mux)

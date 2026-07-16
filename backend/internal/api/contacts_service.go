@@ -1,4 +1,4 @@
-package contacts
+package api
 
 import (
 	"context"
@@ -18,22 +18,22 @@ var ErrSelfRequest = errors.New("cannot send a contact request to yourself")
 var ErrPendingRequestExists = errors.New("a pending contact request already exists")
 var ErrRequestNotFound = errors.New("contact request not found")
 
-type querier interface {
+type contactsQuerier interface {
 	SendContactRequest(context.Context, db.SendContactRequestParams) (db.ContactRequest, error)
 	CancelContactRequest(context.Context, db.CancelContactRequestParams) (db.ContactRequest, error)
 	AcceptContactRequest(context.Context, db.AcceptContactRequestParams) (db.ContactRequest, error)
 	DeclineContactRequest(context.Context, db.DeclineContactRequestParams) (db.ContactRequest, error)
 }
 
-type service struct {
-	queries querier
+type contactsService struct {
+	queries contactsQuerier
 }
 
-func NewService(queries querier) *service {
-	return &service{queries: queries}
+func NewContactsService(queries contactsQuerier) *contactsService {
+	return &contactsService{queries: queries}
 }
 
-func (s *service) send(ctx context.Context, userID, username string) (pgtype.UUID, error) {
+func (s *contactsService) send(ctx context.Context, userID, username string) (pgtype.UUID, error) {
 	senderID, err := core.ParseUUID(userID)
 	if err != nil {
 		return pgtype.UUID{}, err
@@ -61,7 +61,7 @@ func (s *service) send(ctx context.Context, userID, username string) (pgtype.UUI
 	return request.ID, nil
 }
 
-func (s *service) cancel(ctx context.Context, userID string, requestID pgtype.UUID) error {
+func (s *contactsService) cancel(ctx context.Context, userID string, requestID pgtype.UUID) error {
 	senderID, err := core.ParseUUID(userID)
 	if err != nil {
 		return err
@@ -70,7 +70,7 @@ func (s *service) cancel(ctx context.Context, userID string, requestID pgtype.UU
 	return mapRequestMutationError("cancel contact request", err)
 }
 
-func (s *service) accept(ctx context.Context, userID string, requestID pgtype.UUID) error {
+func (s *contactsService) accept(ctx context.Context, userID string, requestID pgtype.UUID) error {
 	recipientID, err := core.ParseUUID(userID)
 	if err != nil {
 		return err
@@ -79,7 +79,7 @@ func (s *service) accept(ctx context.Context, userID string, requestID pgtype.UU
 	return mapRequestMutationError("accept contact request", err)
 }
 
-func (s *service) decline(ctx context.Context, userID string, requestID pgtype.UUID) error {
+func (s *contactsService) decline(ctx context.Context, userID string, requestID pgtype.UUID) error {
 	recipientID, err := core.ParseUUID(userID)
 	if err != nil {
 		return err

@@ -1,4 +1,4 @@
-package users
+package api
 
 import (
 	"encoding/json"
@@ -9,23 +9,23 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-type handler struct {
-	svc    *service
+type usersHandler struct {
+	svc    *usersService
 	logger *slog.Logger
 }
 
-func NewHandler(svc *service, logger *slog.Logger) *handler {
-	return &handler{
+func NewUsersHandler(svc *usersService, logger *slog.Logger) *usersHandler {
+	return &usersHandler{
 		svc:    svc,
 		logger: logger,
 	}
 }
 
-func (h *handler) RegisterRoutes(mux *http.ServeMux) {
+func (h *usersHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /users", h.getUserByEmail)
 }
 
-func (h *handler) getUserByEmail(w http.ResponseWriter, r *http.Request) {
+func (h *usersHandler) getUserByEmail(w http.ResponseWriter, r *http.Request) {
 	email := r.URL.Query().Get("email")
 	if email == "" {
 		http.Error(w, "email is empty", http.StatusBadRequest)

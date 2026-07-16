@@ -1,4 +1,4 @@
-package auth
+package api
 
 import (
 	"encoding/json"
@@ -26,24 +26,24 @@ type loginResponse struct {
 	ExpiresIn   int64  `json:"expiresIn"`
 }
 
-type handler struct {
-	svc    *service
+type authHandler struct {
+	svc    *authService
 	logger *slog.Logger
 }
 
-func NewHandler(svc *service, logger *slog.Logger) *handler {
-	return &handler{
+func NewAuthHandler(svc *authService, logger *slog.Logger) *authHandler {
+	return &authHandler{
 		svc:    svc,
 		logger: logger,
 	}
 }
 
-func (h *handler) RegisterRoutes(mux *http.ServeMux) {
+func (h *authHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /register", h.register)
 	mux.HandleFunc("POST /login", h.login)
 }
 
-func (h *handler) login(w http.ResponseWriter, r *http.Request) {
+func (h *authHandler) login(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MiB
 
 	var request loginRequest
@@ -77,7 +77,7 @@ func (h *handler) login(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *handler) register(w http.ResponseWriter, r *http.Request) {
+func (h *authHandler) register(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MiB
 
 	var dto registerRequest

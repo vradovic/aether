@@ -1,4 +1,4 @@
-package users
+package api
 
 type userResponse struct {
 	ID        string `json:"id"`

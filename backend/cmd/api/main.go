@@ -6,12 +6,11 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/vradovic/aether/services/api/internal/config"
-	"github.com/vradovic/aether/services/api/internal/server"
+	"github.com/vradovic/aether/services/api/internal/api"
 )
 
 func main() {
-	cfg, err := config.Load()
+	cfg, err := api.LoadConfig()
 	if err != nil {
 		log.Fatal("failed to load config: ", err)
 	}
@@ -20,7 +19,7 @@ func main() {
 
 	ctx := context.Background()
 
-	s, err := server.NewServer(ctx, cfg, logger)
+	s, err := api.NewServer(ctx, cfg, logger)
 	if err != nil {
 		log.Fatal("failed to create server: ", err)
 	}
