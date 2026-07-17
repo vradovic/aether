@@ -41,9 +41,9 @@ func NewContactsHandler(service *contactsService, logger *slog.Logger) *contacts
 func (h *contactsHandler) RegisterRoutes(mux *http.ServeMux, authenticate func(http.Handler) http.Handler) {
 	mux.Handle("POST /contact-requests", authenticate(http.HandlerFunc(h.send)))
 	mux.Handle("GET /contact-requests", authenticate(http.HandlerFunc(h.getPendingContactRequests)))
-	mux.Handle("POST /contact-requests/{requestID}", authenticate(http.HandlerFunc(h.cancel)))
-	mux.Handle("POST /contact-requests/{requestID}/accept", authenticate(http.HandlerFunc(h.accept)))
-	mux.Handle("POST /contact-requests/{requestID}/decline", authenticate(http.HandlerFunc(h.decline)))
+	mux.Handle("PATCH /contact-requests/{requestID}/cancel", authenticate(http.HandlerFunc(h.cancel)))
+	mux.Handle("PATCH /contact-requests/{requestID}/accept", authenticate(http.HandlerFunc(h.accept)))
+	mux.Handle("PATCH /contact-requests/{requestID}/decline", authenticate(http.HandlerFunc(h.decline)))
 }
 
 func (h *contactsHandler) getPendingContactRequests(w http.ResponseWriter, r *http.Request) {
