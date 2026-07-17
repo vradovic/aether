@@ -54,22 +54,22 @@ func (h *authHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	var request LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		http.Error(w, "", http.StatusBadRequest)
 		return
 	}
 
 	output, err := h.svc.Login(r.Context(), LoginInput{
-		email:    request.Email,
-		password: request.Password,
+		Email:    request.Email,
+		Password: request.Password,
 	})
 	if err != nil {
-		if errors.Is(err, errInvalidCredentials) {
-			http.Error(w, errInvalidCredentials.Error(), http.StatusUnauthorized)
+		if errors.Is(err, ErrInvalidCredentials) {
+			http.Error(w, "", http.StatusUnauthorized)
 			return
 		}
 
 		h.logger.Error("login failed", "err", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		http.Error(w, "", http.StatusInternalServerError)
 		return
 	}
 
@@ -113,5 +113,5 @@ func (h *authHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated)
+	w.WriteHeader(http.StatusNoContent)
 }

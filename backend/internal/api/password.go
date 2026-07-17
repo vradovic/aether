@@ -8,7 +8,7 @@ import (
 
 const bcryptCost = 12
 
-var errInvalidCredentials = errors.New("invalid credentials")
+var ErrInvalidCredentials = errors.New("invalid credentials")
 
 func hashPassword(password string) (string, error) {
 	hash, err := bcrypt.GenerateFromPassword(
@@ -29,7 +29,7 @@ func verifyPassword(password, passwordHash string) error {
 	)
 
 	if err != nil {
-		return errInvalidCredentials
+		return ErrInvalidCredentials
 	}
 
 	return nil

@@ -35,14 +35,14 @@ type RegisterInput struct {
 }
 
 type LoginInput struct {
-	email    string
-	password string
+	Email    string
+	Password string
 }
 
 func (i LoginInput) normalize() LoginInput {
 	return LoginInput{
-		email:    strings.ToLower(strings.TrimSpace(i.email)),
-		password: i.password,
+		Email:    strings.ToLower(strings.TrimSpace(i.Email)),
+		Password: i.Password,
 	}
 }
 
@@ -115,16 +115,16 @@ func NewAuthService(queries authQuerier, tokenIssuer core.TokenIssuer, logger *s
 func (s *authService) Login(ctx context.Context, input LoginInput) (LoginOutput, error) {
 	input = input.normalize()
 
-	credentials, err := s.querier.GetUserCredentialsByEmail(ctx, input.email)
+	credentials, err := s.querier.GetUserCredentialsByEmail(ctx, input.Email)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return LoginOutput{}, errInvalidCredentials
+		return LoginOutput{}, ErrInvalidCredentials
 	}
 	if err != nil {
 		return LoginOutput{}, fmt.Errorf("get user credentials: %w", err)
 	}
 
-	if err := verifyPassword(input.password, credentials.PasswordHash); err != nil {
-		return LoginOutput{}, errInvalidCredentials
+	if err := verifyPassword(input.Password, credentials.PasswordHash); err != nil {
+		return LoginOutput{}, ErrInvalidCredentials
 	}
 
 	token, err := s.tokenIssuer.Issue(credentials.UserID.String())
