@@ -34,7 +34,7 @@ func NewContactsService(queries contactsQuerier) *contactsService {
 	return &contactsService{queries: queries}
 }
 
-func (s *contactsService) send(ctx context.Context, userID, username string) (pgtype.UUID, error) {
+func (s *contactsService) Send(ctx context.Context, userID, username string) (pgtype.UUID, error) {
 	senderID, err := core.ParseUUID(userID)
 	if err != nil {
 		return pgtype.UUID{}, err
@@ -62,7 +62,7 @@ func (s *contactsService) send(ctx context.Context, userID, username string) (pg
 	return request.ID, nil
 }
 
-func (s *contactsService) getPendingContactRequests(ctx context.Context, userID string) ([]db.ContactRequest, error) {
+func (s *contactsService) GetPendingContactRequests(ctx context.Context, userID string) ([]db.ContactRequest, error) {
 	recipientID, err := core.ParseUUID(userID)
 	if err != nil {
 		return nil, err
@@ -75,7 +75,7 @@ func (s *contactsService) getPendingContactRequests(ctx context.Context, userID 
 	return requests, nil
 }
 
-func (s *contactsService) cancel(ctx context.Context, userID string, requestID pgtype.UUID) error {
+func (s *contactsService) Cancel(ctx context.Context, userID string, requestID pgtype.UUID) error {
 	senderID, err := core.ParseUUID(userID)
 	if err != nil {
 		return err
@@ -84,7 +84,7 @@ func (s *contactsService) cancel(ctx context.Context, userID string, requestID p
 	return mapRequestMutationError("cancel contact request", err)
 }
 
-func (s *contactsService) accept(ctx context.Context, userID string, requestID pgtype.UUID) error {
+func (s *contactsService) Accept(ctx context.Context, userID string, requestID pgtype.UUID) error {
 	recipientID, err := core.ParseUUID(userID)
 	if err != nil {
 		return err
@@ -93,7 +93,7 @@ func (s *contactsService) accept(ctx context.Context, userID string, requestID p
 	return mapRequestMutationError("accept contact request", err)
 }
 
-func (s *contactsService) decline(ctx context.Context, userID string, requestID pgtype.UUID) error {
+func (s *contactsService) Decline(ctx context.Context, userID string, requestID pgtype.UUID) error {
 	recipientID, err := core.ParseUUID(userID)
 	if err != nil {
 		return err

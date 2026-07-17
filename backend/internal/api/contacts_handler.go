@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/vradovic/aether/services/api/internal/core"
+	"github.com/vradovic/aether/services/api/internal/db"
 )
 
 type sendRequest struct {
@@ -29,12 +30,20 @@ type contactRequestResponse struct {
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
+type ContactsService interface {
+	Send(ctx context.Context, userID, username string) (pgtype.UUID, error)
+	GetPendingContactRequests(ctx context.Context, userID string) ([]db.ContactRequest, error)
+	Cancel(ctx context.Context, userID string, requestID pgtype.UUID) error
+	Accept(ctx context.Context, userID string, requestID pgtype.UUID) error
+	Decline(ctx context.Context, userID string, requestID pgtype.UUID) error
+}
+
 type contactsHandler struct {
-	service *contactsService
+	service ContactsService
 	logger  *slog.Logger
 }
 
-func NewContactsHandler(service *contactsService, logger *slog.Logger) *contactsHandler {
+func NewContactsHandler(service ContactsService, logger *slog.Logger) *contactsHandler {
 	return &contactsHandler{service: service, logger: logger}
 }
 
@@ -48,7 +57,7 @@ func (h *contactsHandler) RegisterRoutes(mux *http.ServeMux, authenticate func(h
 
 func (h *contactsHandler) getPendingContactRequests(w http.ResponseWriter, r *http.Request) {
 	userID, _ := core.UserIDFromContext(r.Context())
-	requests, err := h.service.getPendingContactRequests(r.Context(), userID)
+	requests, err := h.service.GetPendingContactRequests(r.Context(), userID)
 	if err != nil {
 		h.writeError(w, err)
 		return
@@ -81,7 +90,7 @@ func (h *contactsHandler) send(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID, _ := core.UserIDFromContext(r.Context())
-	requestID, err := h.service.send(r.Context(), userID, request.Username)
+	requestID, err := h.service.Send(r.Context(), userID, request.Username)
 	if err != nil {
 		h.writeError(w, err)
 		return
@@ -95,15 +104,15 @@ func (h *contactsHandler) send(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *contactsHandler) cancel(w http.ResponseWriter, r *http.Request) {
-	h.mutate(w, r, h.service.cancel)
+	h.mutate(w, r, h.service.Cancel)
 }
 
 func (h *contactsHandler) accept(w http.ResponseWriter, r *http.Request) {
-	h.mutate(w, r, h.service.accept)
+	h.mutate(w, r, h.service.Accept)
 }
 
 func (h *contactsHandler) decline(w http.ResponseWriter, r *http.Request) {
-	h.mutate(w, r, h.service.decline)
+	h.mutate(w, r, h.service.Decline)
 }
 
 func (h *contactsHandler) mutate(w http.ResponseWriter, r *http.Request, action func(context.Context, string, pgtype.UUID) error) {

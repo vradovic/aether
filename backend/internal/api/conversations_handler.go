@@ -1,19 +1,25 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/vradovic/aether/services/api/internal/core"
 )
 
+type ConversationsService interface {
+	GetConversations(ctx context.Context, userID pgtype.UUID) ([]Conversation, error)
+}
+
 type conversationsHandler struct {
-	svc    *conversationsService
+	svc    ConversationsService
 	logger *slog.Logger
 }
 
-func NewConversationsHandler(svc *conversationsService, logger *slog.Logger) *conversationsHandler {
+func NewConversationsHandler(svc ConversationsService, logger *slog.Logger) *conversationsHandler {
 	return &conversationsHandler{
 		svc:    svc,
 		logger: logger,
@@ -45,7 +51,7 @@ func (h *conversationsHandler) getConversations(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	convos, err := h.svc.getConversations(r.Context(), userID)
+	convos, err := h.svc.GetConversations(r.Context(), userID)
 	if err != nil {
 		h.logger.Error("getConversations error", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)

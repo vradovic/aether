@@ -37,7 +37,7 @@ func NewConversationsService(querier conversationsQuerier, logger *slog.Logger) 
 	}
 }
 
-func (s *conversationsService) getConversations(ctx context.Context, userID pgtype.UUID) ([]Conversation, error) {
+func (s *conversationsService) GetConversations(ctx context.Context, userID pgtype.UUID) ([]Conversation, error) {
 	convosDb, err := s.querier.GetConversationsForUser(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get conversations for userID %s: %w", userID, err)
