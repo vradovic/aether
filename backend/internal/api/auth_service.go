@@ -26,7 +26,7 @@ var errNameLength = fmt.Errorf("name should be between %d and %d characters long
 var errUsernameLength = fmt.Errorf("username should be between %d and %d characters long", minUsernameLength, maxUsernameLength)
 var errEmailFormat = fmt.Errorf("invalid email format")
 
-type registerInput struct {
+type RegisterInput struct {
 	email     string
 	username  string
 	password  string
@@ -34,30 +34,30 @@ type registerInput struct {
 	lastName  string
 }
 
-type loginInput struct {
+type LoginInput struct {
 	email    string
 	password string
 }
 
-func (i loginInput) normalize() loginInput {
-	return loginInput{
+func (i LoginInput) normalize() LoginInput {
+	return LoginInput{
 		email:    strings.ToLower(strings.TrimSpace(i.email)),
 		password: i.password,
 	}
 }
 
-type loginOutput struct {
-	accessToken      string
-	expiresInSeconds int64
+type LoginOutput struct {
+	AccessToken      string
+	ExpiresInSeconds int64
 }
 
-func (r registerInput) normalize() registerInput {
+func (r RegisterInput) normalize() RegisterInput {
 	email := strings.ToLower(strings.TrimSpace(r.email))
 	username := strings.TrimSpace(r.username)
 	firstName := strings.TrimSpace(r.firstName)
 	lastName := strings.TrimSpace(r.lastName)
 
-	return registerInput{
+	return RegisterInput{
 		email:     email,
 		username:  username,
 		password:  r.password,
@@ -67,7 +67,7 @@ func (r registerInput) normalize() registerInput {
 
 }
 
-func (r registerInput) validate() error {
+func (r RegisterInput) validate() error {
 	if utf8.RuneCountInString(r.firstName) < minNameLength ||
 		utf8.RuneCountInString(r.firstName) > maxNameLength ||
 		utf8.RuneCountInString(r.lastName) < minNameLength ||
@@ -112,33 +112,33 @@ func NewAuthService(queries authQuerier, tokenIssuer core.TokenIssuer, logger *s
 	}
 }
 
-func (s *authService) login(ctx context.Context, input loginInput) (loginOutput, error) {
+func (s *authService) Login(ctx context.Context, input LoginInput) (LoginOutput, error) {
 	input = input.normalize()
 
 	credentials, err := s.querier.GetUserCredentialsByEmail(ctx, input.email)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return loginOutput{}, errInvalidCredentials
+		return LoginOutput{}, errInvalidCredentials
 	}
 	if err != nil {
-		return loginOutput{}, fmt.Errorf("get user credentials: %w", err)
+		return LoginOutput{}, fmt.Errorf("get user credentials: %w", err)
 	}
 
 	if err := verifyPassword(input.password, credentials.PasswordHash); err != nil {
-		return loginOutput{}, errInvalidCredentials
+		return LoginOutput{}, errInvalidCredentials
 	}
 
 	token, err := s.tokenIssuer.Issue(credentials.UserID.String())
 	if err != nil {
-		return loginOutput{}, fmt.Errorf("issue access token: %w", err)
+		return LoginOutput{}, fmt.Errorf("issue access token: %w", err)
 	}
 
-	return loginOutput{
-		accessToken:      token.Value,
-		expiresInSeconds: token.ExpiresInSeconds,
+	return LoginOutput{
+		AccessToken:      token.Value,
+		ExpiresInSeconds: token.ExpiresInSeconds,
 	}, nil
 }
 
-func (s *authService) register(ctx context.Context, input registerInput) error {
+func (s *authService) Register(ctx context.Context, input RegisterInput) error {
 	input = input.normalize()
 	if err := input.validate(); err != nil {
 		return err
