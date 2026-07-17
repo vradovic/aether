@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/vradovic/aether/services/api/internal/core"
@@ -19,6 +20,15 @@ type sendResponse struct {
 	ID string `json:"id"`
 }
 
+type contactRequestResponse struct {
+	ID          string    `json:"id"`
+	SenderID    string    `json:"senderId"`
+	RecipientID string    `json:"recipientId"`
+	Status      string    `json:"status"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
 type contactsHandler struct {
 	service *contactsService
 	logger  *slog.Logger
@@ -30,9 +40,36 @@ func NewContactsHandler(service *contactsService, logger *slog.Logger) *contacts
 
 func (h *contactsHandler) RegisterRoutes(mux *http.ServeMux, authenticate func(http.Handler) http.Handler) {
 	mux.Handle("POST /contact-requests", authenticate(http.HandlerFunc(h.send)))
-	mux.Handle("DELETE /contact-requests/{requestID}", authenticate(http.HandlerFunc(h.cancel)))
+	mux.Handle("GET /contact-requests", authenticate(http.HandlerFunc(h.getPendingContactRequests)))
+	mux.Handle("POST /contact-requests/{requestID}", authenticate(http.HandlerFunc(h.cancel)))
 	mux.Handle("POST /contact-requests/{requestID}/accept", authenticate(http.HandlerFunc(h.accept)))
 	mux.Handle("POST /contact-requests/{requestID}/decline", authenticate(http.HandlerFunc(h.decline)))
+}
+
+func (h *contactsHandler) getPendingContactRequests(w http.ResponseWriter, r *http.Request) {
+	userID, _ := core.UserIDFromContext(r.Context())
+	requests, err := h.service.getPendingContactRequests(r.Context(), userID)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+
+	response := make([]contactRequestResponse, len(requests))
+	for i, request := range requests {
+		response[i] = contactRequestResponse{
+			ID:          request.ID.String(),
+			SenderID:    request.SenderID.String(),
+			RecipientID: request.RecipientID.String(),
+			Status:      request.Status,
+			CreatedAt:   request.CreatedAt.Time,
+			UpdatedAt:   request.UpdatedAt.Time,
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		h.logger.Error("failed to encode contact requests response", "err", err)
+	}
 }
 
 func (h *contactsHandler) send(w http.ResponseWriter, r *http.Request) {

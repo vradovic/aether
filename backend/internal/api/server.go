@@ -47,9 +47,13 @@ func NewServer(ctx context.Context, cfg *Config, logger *slog.Logger) (*server, 
 	contactsService := NewContactsService(queries)
 	contactsHandler := NewContactsHandler(contactsService, logger)
 
+	conversationsService := NewConversationsService(queries, logger)
+	conversationsHandler := NewConversationsHandler(conversationsService, logger)
+
 	usersHandler.RegisterRoutes(mux)
 	authHandler.RegisterRoutes(mux)
 	contactsHandler.RegisterRoutes(mux, authMiddleware.Authenticate)
+	conversationsHandler.RegisterRoutes(mux, authMiddleware.Authenticate)
 
 	return &server{
 		cfg:    cfg,

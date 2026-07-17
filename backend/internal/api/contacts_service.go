@@ -20,6 +20,7 @@ var ErrRequestNotFound = errors.New("contact request not found")
 
 type contactsQuerier interface {
 	SendContactRequest(context.Context, db.SendContactRequestParams) (db.ContactRequest, error)
+	GetPendingContactRequests(context.Context, pgtype.UUID) ([]db.ContactRequest, error)
 	CancelContactRequest(context.Context, db.CancelContactRequestParams) (db.ContactRequest, error)
 	AcceptContactRequest(context.Context, db.AcceptContactRequestParams) (db.ContactRequest, error)
 	DeclineContactRequest(context.Context, db.DeclineContactRequestParams) (db.ContactRequest, error)
@@ -59,6 +60,19 @@ func (s *contactsService) send(ctx context.Context, userID, username string) (pg
 		return pgtype.UUID{}, fmt.Errorf("send contact request: %w", err)
 	}
 	return request.ID, nil
+}
+
+func (s *contactsService) getPendingContactRequests(ctx context.Context, userID string) ([]db.ContactRequest, error) {
+	recipientID, err := core.ParseUUID(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	requests, err := s.queries.GetPendingContactRequests(ctx, recipientID)
+	if err != nil {
+		return nil, fmt.Errorf("get contact requests: %w", err)
+	}
+	return requests, nil
 }
 
 func (s *contactsService) cancel(ctx context.Context, userID string, requestID pgtype.UUID) error {

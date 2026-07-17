@@ -5,6 +5,13 @@ FROM users
 WHERE username = $2
 RETURNING *;
 
+-- name: GetPendingContactRequests :many
+SELECT *
+FROM contact_requests
+WHERE recipient_id = $1
+  AND status = 'pending'
+ORDER BY created_at DESC;
+
 -- name: CancelContactRequest :one
 UPDATE contact_requests
 SET status = 'cancelled', updated_at = now()

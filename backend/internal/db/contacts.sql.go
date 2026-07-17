@@ -155,6 +155,41 @@ func (q *Queries) GetContacts(ctx context.Context, user1ID pgtype.UUID) ([]GetCo
 	return items, nil
 }
 
+const getPendingContactRequests = `-- name: GetPendingContactRequests :many
+SELECT id, sender_id, recipient_id, status, created_at, updated_at
+FROM contact_requests
+WHERE recipient_id = $1
+  AND status = 'pending'
+ORDER BY created_at DESC
+`
+
+func (q *Queries) GetPendingContactRequests(ctx context.Context, recipientID pgtype.UUID) ([]ContactRequest, error) {
+	rows, err := q.db.Query(ctx, getPendingContactRequests, recipientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ContactRequest
+	for rows.Next() {
+		var i ContactRequest
+		if err := rows.Scan(
+			&i.ID,
+			&i.SenderID,
+			&i.RecipientID,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertContact = `-- name: InsertContact :one
 INSERT INTO contacts (user1_id, user2_id)
 VALUES (
