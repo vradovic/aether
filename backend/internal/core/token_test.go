@@ -57,3 +57,22 @@ func TestAccessTokenIssuerIssue(t *testing.T) {
 		t.Errorf("token expiration = %v, want %v", claims.ExpiresAt, wantExpiration)
 	}
 }
+
+func TestParseTokenSubject(t *testing.T) {
+	const signingKey = "0123456789abcdef0123456789abcdef"
+	const userID = "550e8400-e29b-41d4-a716-446655440000"
+
+	issuer := NewAccessTokenIssuer(signingKey, "aether-api", 15*time.Minute)
+	issued, err := issuer.Issue(userID)
+	if err != nil {
+		t.Fatalf("Issue() error = %v", err)
+	}
+
+	subject, err := ParseTokenSubject(issued.Value, signingKey)
+	if err != nil {
+		t.Fatalf("ParseTokenSubject() error = %v", err)
+	}
+	if subject != userID {
+		t.Fatalf("ParseTokenSubject() = %q, want %q", subject, userID)
+	}
+}
