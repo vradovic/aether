@@ -24,8 +24,7 @@ var successLoginInput = api.LoginInput{
 func (f fakeService) Login(ctx context.Context, input api.LoginInput) (api.LoginOutput, error) {
 	if input == successLoginInput {
 		return api.LoginOutput{
-			AccessToken:      "12345",
-			ExpiresInSeconds: 60,
+			AccessToken: "12345",
 		}, nil
 	} else if input.Email == "crash@example.com" {
 		return api.LoginOutput{}, errors.New("random error")

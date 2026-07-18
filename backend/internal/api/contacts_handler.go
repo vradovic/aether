@@ -47,16 +47,15 @@ func NewContactsHandler(service ContactsService, logger *slog.Logger) *contactsH
 	return &contactsHandler{service: service, logger: logger}
 }
 
-func (h *contactsHandler) RegisterRoutes(mux *http.ServeMux, authenticate func(http.Handler) http.Handler) {
-	mux.Handle("POST /contact-requests", authenticate(http.HandlerFunc(h.send)))
-	mux.Handle("GET /contact-requests", authenticate(http.HandlerFunc(h.getPendingContactRequests)))
-	mux.Handle("PATCH /contact-requests/{requestID}/cancel", authenticate(http.HandlerFunc(h.cancel)))
-	mux.Handle("PATCH /contact-requests/{requestID}/accept", authenticate(http.HandlerFunc(h.accept)))
-	mux.Handle("PATCH /contact-requests/{requestID}/decline", authenticate(http.HandlerFunc(h.decline)))
+func (h *contactsHandler) RegisterRoutes(mux *http.ServeMux, m Middleware) {
+	mux.Handle("POST /contact-requests", m.RequireAuth(h.send))
+	mux.Handle("GET /contact-requests", m.RequireAuth(h.getPendingContactRequests))
+	mux.Handle("PATCH /contact-requests/{requestID}/cancel", m.RequireAuth(h.cancel))
+	mux.Handle("PATCH /contact-requests/{requestID}/accept", m.RequireAuth(h.accept))
+	mux.Handle("PATCH /contact-requests/{requestID}/decline", m.RequireAuth(h.decline))
 }
 
-func (h *contactsHandler) getPendingContactRequests(w http.ResponseWriter, r *http.Request) {
-	userID, _ := core.UserIDFromContext(r.Context())
+func (h *contactsHandler) getPendingContactRequests(w http.ResponseWriter, r *http.Request, userID string) {
 	requests, err := h.service.GetPendingContactRequests(r.Context(), userID)
 	if err != nil {
 		h.writeError(w, err)
@@ -81,7 +80,7 @@ func (h *contactsHandler) getPendingContactRequests(w http.ResponseWriter, r *ht
 	}
 }
 
-func (h *contactsHandler) send(w http.ResponseWriter, r *http.Request) {
+func (h *contactsHandler) send(w http.ResponseWriter, r *http.Request, userID string) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var request sendRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.Username == "" {
@@ -89,7 +88,6 @@ func (h *contactsHandler) send(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, _ := core.UserIDFromContext(r.Context())
 	requestID, err := h.service.Send(r.Context(), userID, request.Username)
 	if err != nil {
 		h.writeError(w, err)
@@ -103,25 +101,24 @@ func (h *contactsHandler) send(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *contactsHandler) cancel(w http.ResponseWriter, r *http.Request) {
-	h.mutate(w, r, h.service.Cancel)
+func (h *contactsHandler) cancel(w http.ResponseWriter, r *http.Request, userID string) {
+	h.mutate(w, r, h.service.Cancel, userID)
 }
 
-func (h *contactsHandler) accept(w http.ResponseWriter, r *http.Request) {
-	h.mutate(w, r, h.service.Accept)
+func (h *contactsHandler) accept(w http.ResponseWriter, r *http.Request, userID string) {
+	h.mutate(w, r, h.service.Accept, userID)
 }
 
-func (h *contactsHandler) decline(w http.ResponseWriter, r *http.Request) {
-	h.mutate(w, r, h.service.Decline)
+func (h *contactsHandler) decline(w http.ResponseWriter, r *http.Request, userID string) {
+	h.mutate(w, r, h.service.Decline, userID)
 }
 
-func (h *contactsHandler) mutate(w http.ResponseWriter, r *http.Request, action func(context.Context, string, pgtype.UUID) error) {
+func (h *contactsHandler) mutate(w http.ResponseWriter, r *http.Request, action func(context.Context, string, pgtype.UUID) error, userID string) {
 	var requestID pgtype.UUID
 	if err := requestID.Scan(r.PathValue("requestID")); err != nil || !requestID.Valid {
 		http.Error(w, "invalid contact request ID", http.StatusBadRequest)
 		return
 	}
-	userID, _ := core.UserIDFromContext(r.Context())
 	if err := action(r.Context(), userID, requestID); err != nil {
 		h.writeError(w, err)
 		return

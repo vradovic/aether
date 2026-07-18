@@ -55,3 +55,7 @@ func (s *conversationsService) GetConversations(ctx context.Context, userID pgty
 
 	return convos, err
 }
+
+func (s *conversationsService) CreateConversation(ctx context.Context, name, userID string) (Conversation, error) {
+	return Conversation{}, nil
+}

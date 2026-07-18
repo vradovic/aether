@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/mail"
 	"strings"
 	"unicode/utf8"
@@ -47,8 +46,7 @@ func (i LoginInput) normalize() LoginInput {
 }
 
 type LoginOutput struct {
-	AccessToken      string
-	ExpiresInSeconds int64
+	AccessToken string
 }
 
 func (r RegisterInput) normalize() RegisterInput {
@@ -99,16 +97,14 @@ type authQuerier interface {
 }
 
 type authService struct {
-	querier     authQuerier
-	tokenIssuer core.TokenIssuer
-	logger      *slog.Logger
+	querier    authQuerier
+	signingKey string
 }
 
-func NewAuthService(queries authQuerier, tokenIssuer core.TokenIssuer, logger *slog.Logger) *authService {
+func NewAuthService(queries authQuerier, signingKey string) *authService {
 	return &authService{
-		querier:     queries,
-		tokenIssuer: tokenIssuer,
-		logger:      logger,
+		querier:    queries,
+		signingKey: signingKey,
 	}
 }
 
@@ -127,14 +123,13 @@ func (s *authService) Login(ctx context.Context, input LoginInput) (LoginOutput,
 		return LoginOutput{}, ErrInvalidCredentials
 	}
 
-	token, err := s.tokenIssuer.Issue(credentials.UserID.String())
+	token, err := core.IssueToken(s.signingKey, credentials.UserID.String())
 	if err != nil {
 		return LoginOutput{}, fmt.Errorf("issue access token: %w", err)
 	}
 
 	return LoginOutput{
-		AccessToken:      token.Value,
-		ExpiresInSeconds: token.ExpiresInSeconds,
+		AccessToken: token,
 	}, nil
 }
 

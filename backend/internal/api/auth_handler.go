@@ -77,7 +77,6 @@ func (h *authHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(LoginResponse{
 		AccessToken: output.AccessToken,
 		TokenType:   "Bearer",
-		ExpiresIn:   output.ExpiresInSeconds,
 	}); err != nil {
 		h.logger.Error("failed to encode login response", "err", err)
 	}

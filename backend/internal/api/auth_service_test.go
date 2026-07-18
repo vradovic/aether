@@ -3,12 +3,10 @@ package api
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -19,15 +17,13 @@ import (
 
 const (
 	testSigningKey = "integration-test-signing-key"
-	testIssuer     = "auth-service-integration-test"
 )
 
 func TestAuthService(t *testing.T) {
 	ctx := context.Background()
 	conn := startAuthTestDatabase(t, ctx)
 	queries := db.New(conn)
-	issuer := core.NewAccessTokenIssuer(testSigningKey, testIssuer, time.Hour)
-	service := NewAuthService(queries, issuer, slog.New(slog.DiscardHandler))
+	service := NewAuthService(queries, testSigningKey)
 
 	t.Run("register", func(t *testing.T) {
 		t.Run("stores normalized user and hashed password", func(t *testing.T) {
@@ -159,9 +155,6 @@ func TestAuthService(t *testing.T) {
 			}
 			if output.AccessToken == "" {
 				t.Fatal("Login() returned an empty access token")
-			}
-			if output.ExpiresInSeconds != int64(time.Hour/time.Second) {
-				t.Fatalf("ExpiresInSeconds = %d, want %d", output.ExpiresInSeconds, int64(time.Hour/time.Second))
 			}
 
 			credentials, err := queries.GetUserCredentialsByEmail(ctx, input.email)

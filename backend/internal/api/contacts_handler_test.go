@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/vradovic/aether/services/api/internal/api"
@@ -55,22 +54,22 @@ func (f fakeContactsService) Decline(context.Context, string, pgtype.UUID) error
 func newContactsMux(service fakeContactsService) *http.ServeMux {
 	logger := slog.New(slog.DiscardHandler)
 	handler := api.NewContactsHandler(service, logger)
-	middleware := core.NewMiddleware(testSigningKey, testIssuer)
+	middleware := api.Middleware{SigningKey: testSigningKey}
 	mux := http.NewServeMux()
-	handler.RegisterRoutes(mux, middleware.Authenticate)
+	handler.RegisterRoutes(mux, middleware)
 	return mux
 }
 
 func authenticatedRequest(t *testing.T, method, target, body string) *http.Request {
 	t.Helper()
 
-	token, err := core.NewAccessTokenIssuer(testSigningKey, testIssuer, time.Hour).Issue(testUserID)
+	token, err := core.IssueToken(testSigningKey, testUserID)
 	if err != nil {
 		t.Fatalf("failed to issue access token: %v", err)
 	}
 
 	request := httptest.NewRequest(method, target, strings.NewReader(body))
-	request.Header.Set("Authorization", "Bearer "+token.Value)
+	request.Header.Set("Authorization", "Bearer "+token)
 	return request
 }
 

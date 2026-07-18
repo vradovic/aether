@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/vradovic/aether/services/api/internal/api"
@@ -26,12 +25,16 @@ func (f fakeConversationsService) GetConversations(context.Context, pgtype.UUID)
 	return f.conversations, f.err
 }
 
+func (f fakeConversationsService) CreateConversation(context.Context, string, string) (api.Conversation, error) {
+	return api.Conversation{}, f.err
+}
+
 func newConversationsMux(service fakeConversationsService) *http.ServeMux {
 	logger := slog.New(slog.DiscardHandler)
 	handler := api.NewConversationsHandler(service, logger)
-	middleware := core.NewMiddleware(testSigningKey, testIssuer)
+	middleware := api.Middleware{SigningKey: testSigningKey}
 	mux := http.NewServeMux()
-	handler.RegisterRoutes(mux, middleware.Authenticate)
+	handler.RegisterRoutes(mux, middleware)
 	return mux
 }
 
@@ -76,13 +79,13 @@ func TestGetConversations(t *testing.T) {
 	})
 
 	t.Run("should reject invalid user ID", func(t *testing.T) {
-		token, err := core.NewAccessTokenIssuer(testSigningKey, testIssuer, time.Hour).Issue("not-a-uuid")
+		token, err := core.IssueToken(testSigningKey, "not-a-uuid")
 		if err != nil {
 			t.Fatalf("failed to issue access token: %v", err)
 		}
 		mux := newConversationsMux(fakeConversationsService{})
 		request := httptest.NewRequest(http.MethodGet, "/conversations", nil)
-		request.Header.Set("Authorization", "Bearer "+token.Value)
+		request.Header.Set("Authorization", "Bearer "+token)
 		response := httptest.NewRecorder()
 
 		mux.ServeHTTP(response, request)
@@ -103,4 +106,38 @@ func TestGetConversations(t *testing.T) {
 			t.Fatalf("expected status %d, got %d, body: %s", http.StatusInternalServerError, response.Code, response.Body.String())
 		}
 	})
+}
+
+func TestCreateConversation(t *testing.T) {
+	tests := []struct {
+		name       string
+		wantStatus int
+		err        error
+	}{
+		{
+			name:       "should succeed",
+			wantStatus: http.StatusCreated,
+			err:        nil,
+		},
+		{
+			name:       "should unexpected error",
+			wantStatus: http.StatusInternalServerError,
+			err:        errors.New("whoops"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mux := newConversationsMux(fakeConversationsService{err: tt.err})
+			req := authenticatedRequest(t, http.MethodPost, "/conversations", "")
+			resp := httptest.NewRecorder()
+
+			mux.ServeHTTP(resp, req)
+			gotStatus := resp.Result().StatusCode
+
+			if tt.wantStatus != gotStatus {
+				t.Fatalf("got %d, want %d", gotStatus, tt.wantStatus)
+			}
+		})
+	}
 }

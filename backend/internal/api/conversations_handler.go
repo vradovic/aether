@@ -12,6 +12,7 @@ import (
 
 type ConversationsService interface {
 	GetConversations(ctx context.Context, userID pgtype.UUID) ([]Conversation, error)
+	CreateConversation(ctx context.Context, name, userID string) (Conversation, error)
 }
 
 type conversationsHandler struct {
@@ -26,24 +27,12 @@ func NewConversationsHandler(svc ConversationsService, logger *slog.Logger) *con
 	}
 }
 
-func (h *conversationsHandler) RegisterRoutes(mux *http.ServeMux, authenticate func(http.Handler) http.Handler) {
-	// get convos
-	// create convo
-	// delete convo
-	// add participant
-	// remove participant
-	// update convo name
-	// sync messages
-	mux.Handle("GET /conversations", authenticate(http.HandlerFunc(h.getConversations)))
+func (h *conversationsHandler) RegisterRoutes(mux *http.ServeMux, m Middleware) {
+	mux.Handle("GET /conversations", m.RequireAuth(h.getConversations))
+	mux.Handle("POST /conversations", m.RequireAuth(h.CreateConversation))
 }
 
-func (h *conversationsHandler) getConversations(w http.ResponseWriter, r *http.Request) {
-	userIDString, ok := core.UserIDFromContext(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-
+func (h *conversationsHandler) getConversations(w http.ResponseWriter, r *http.Request, userIDString string) {
 	// move uuid parsing somewhere else...
 	userID, err := core.ParseUUID(userIDString)
 	if err != nil {
@@ -63,4 +52,26 @@ func (h *conversationsHandler) getConversations(w http.ResponseWriter, r *http.R
 	if err := json.NewEncoder(w).Encode(convos); err != nil {
 		h.logger.Error("failed to encode convos", "error", err)
 	}
+}
+
+type CreateConversationRequestBody struct {
+	Name string `json:"name"`
+}
+
+func (h *conversationsHandler) CreateConversation(w http.ResponseWriter, r *http.Request, userID string) {
+	var name string
+	var body CreateConversationRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		name = ""
+	} else {
+		name = body.Name
+	}
+
+	convo, err := h.svc.CreateConversation(r.Context(), name, userID)
+	if err != nil {
+		httpInternalServerError(w)
+		return
+	}
+
+	writeJSONResponse(w, http.StatusCreated, convo, h.logger)
 }
