@@ -9,6 +9,14 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+type userResponse struct {
+	ID        string `json:"id"`
+	Email     string `json:"email"`
+	Username  string `json:"username"`
+	FirstName string `json:"firstName"`
+	LastName  string `json:"lastName"`
+}
+
 type usersHandler struct {
 	svc    *usersService
 	logger *slog.Logger

@@ -22,7 +22,7 @@ const (
 	testIssuer     = "auth-service-integration-test"
 )
 
-func TestAuthServiceIntegration(t *testing.T) {
+func TestAuthService(t *testing.T) {
 	ctx := context.Background()
 	conn := startAuthTestDatabase(t, ctx)
 	queries := db.New(conn)
