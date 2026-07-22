@@ -102,24 +102,38 @@ func (h *contactsHandler) send(w http.ResponseWriter, r *http.Request, userID st
 }
 
 func (h *contactsHandler) cancel(w http.ResponseWriter, r *http.Request, userID string) {
-	h.mutate(w, r, h.service.Cancel, userID)
-}
-
-func (h *contactsHandler) accept(w http.ResponseWriter, r *http.Request, userID string) {
-	h.mutate(w, r, h.service.Accept, userID)
-}
-
-func (h *contactsHandler) decline(w http.ResponseWriter, r *http.Request, userID string) {
-	h.mutate(w, r, h.service.Decline, userID)
-}
-
-func (h *contactsHandler) mutate(w http.ResponseWriter, r *http.Request, action func(context.Context, string, pgtype.UUID) error, userID string) {
 	var requestID pgtype.UUID
 	if err := requestID.Scan(r.PathValue("requestID")); err != nil || !requestID.Valid {
 		http.Error(w, "invalid contact request ID", http.StatusBadRequest)
 		return
 	}
-	if err := action(r.Context(), userID, requestID); err != nil {
+	if err := h.service.Cancel(r.Context(), userID, requestID); err != nil {
+		h.writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *contactsHandler) accept(w http.ResponseWriter, r *http.Request, userID string) {
+	var requestID pgtype.UUID
+	if err := requestID.Scan(r.PathValue("requestID")); err != nil || !requestID.Valid {
+		http.Error(w, "invalid contact request ID", http.StatusBadRequest)
+		return
+	}
+	if err := h.service.Accept(r.Context(), userID, requestID); err != nil {
+		h.writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *contactsHandler) decline(w http.ResponseWriter, r *http.Request, userID string) {
+	var requestID pgtype.UUID
+	if err := requestID.Scan(r.PathValue("requestID")); err != nil || !requestID.Valid {
+		http.Error(w, "invalid contact request ID", http.StatusBadRequest)
+		return
+	}
+	if err := h.service.Decline(r.Context(), userID, requestID); err != nil {
 		h.writeError(w, err)
 		return
 	}

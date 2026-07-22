@@ -24,11 +24,13 @@ const (
 )
 
 type fakeContactsService struct {
-	requestID   pgtype.UUID
-	requests    []db.ContactRequest
-	sendErr     error
-	getErr      error
-	mutationErr error
+	requestID  pgtype.UUID
+	requests   []db.ContactRequest
+	sendErr    error
+	getErr     error
+	cancelErr  error
+	acceptErr  error
+	declineErr error
 }
 
 func (f fakeContactsService) Send(context.Context, string, string) (pgtype.UUID, error) {
@@ -40,15 +42,15 @@ func (f fakeContactsService) GetPendingContactRequests(context.Context, string) 
 }
 
 func (f fakeContactsService) Cancel(context.Context, string, pgtype.UUID) error {
-	return f.mutationErr
+	return f.cancelErr
 }
 
 func (f fakeContactsService) Accept(context.Context, string, pgtype.UUID) error {
-	return f.mutationErr
+	return f.acceptErr
 }
 
 func (f fakeContactsService) Decline(context.Context, string, pgtype.UUID) error {
-	return f.mutationErr
+	return f.declineErr
 }
 
 func newContactsMux(service fakeContactsService) *http.ServeMux {
@@ -178,7 +180,7 @@ func TestGetPendingContactRequests(t *testing.T) {
 	})
 }
 
-func TestMutateContactRequest(t *testing.T) {
+func TestUpdateContactRequest(t *testing.T) {
 	for _, action := range []string{"cancel", "accept", "decline"} {
 		t.Run(action+" should return no content", func(t *testing.T) {
 			mux := newContactsMux(fakeContactsService{})
@@ -205,15 +207,24 @@ func TestMutateContactRequest(t *testing.T) {
 		}
 	})
 
-	t.Run("should return not found", func(t *testing.T) {
-		mux := newContactsMux(fakeContactsService{mutationErr: api.ErrRequestNotFound})
-		request := authenticatedRequest(t, http.MethodPatch, "/contact-requests/"+testRequestID+"/accept", "")
-		response := httptest.NewRecorder()
+	for _, test := range []struct {
+		action  string
+		service fakeContactsService
+	}{
+		{action: "cancel", service: fakeContactsService{cancelErr: api.ErrRequestNotFound}},
+		{action: "accept", service: fakeContactsService{acceptErr: api.ErrRequestNotFound}},
+		{action: "decline", service: fakeContactsService{declineErr: api.ErrRequestNotFound}},
+	} {
+		t.Run(test.action+" should return not found", func(t *testing.T) {
+			mux := newContactsMux(test.service)
+			request := authenticatedRequest(t, http.MethodPatch, "/contact-requests/"+testRequestID+"/"+test.action, "")
+			response := httptest.NewRecorder()
 
-		mux.ServeHTTP(response, request)
+			mux.ServeHTTP(response, request)
 
-		if response.Code != http.StatusNotFound {
-			t.Fatalf("expected status %d, got %d, body: %s", http.StatusNotFound, response.Code, response.Body.String())
-		}
-	})
+			if response.Code != http.StatusNotFound {
+				t.Fatalf("expected status %d, got %d, body: %s", http.StatusNotFound, response.Code, response.Body.String())
+			}
+		})
+	}
 }
