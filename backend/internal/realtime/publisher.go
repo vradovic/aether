@@ -41,23 +41,23 @@ func (p publisher) publish(ctx context.Context, msg publishMessage) error {
 
 	ids, err := p.getRecipients(ctx, msg.ConversationID)
 	if err != nil {
-		return err
+		return fmt.Errorf("getRecipients: %w", err)
 	}
 	msg.Recipients = ids
 
 	// NOTE: If process fails after insertMessage and before Publish, the db will contain the message but clients won't receive it
 	publishMsg, err := p.insertMessage(ctx, msg)
 	if err != nil {
-		return err
+		return fmt.Errorf("insertMessage: %w", err)
 	}
 
 	bytes, err := json.Marshal(&publishMsg)
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal: %w", err)
 	}
 
 	if err = p.nc.Publish(p.subject, bytes); err != nil {
-		return err
+		return fmt.Errorf("nats publish: %w", err)
 	}
 
 	return nil

@@ -27,7 +27,17 @@ services:
       - "8081:8080"
 
     volumes:
-      - docs/openapi.yaml:/openapi/openapi.yaml:ro
+      - ./docs/openapi.yaml:/openapi/openapi.yaml:ro
+
+  nats:
+    container_name: aether-nats
+    image: nats:2.11-alpine
+    restart: unless-stopped
+    command: [ "-js" ]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+
 
 volumes:
   postgres_data:
