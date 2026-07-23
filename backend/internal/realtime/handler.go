@@ -15,15 +15,8 @@ var upgrader = websocket.Upgrader{
 }
 
 func ServeWs(w http.ResponseWriter, r *http.Request, logger *slog.Logger, publisher publisher, router router, secret string) {
-	token := r.URL.Query().Get("token")
-	if token == "" {
-		http.Error(w, "must include token", http.StatusBadRequest)
-		return
-	}
-
-	userID, err := core.ParseTokenSubject(token, secret)
+	userID, err := ParseToken(w, r, secret)
 	if err != nil {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -49,4 +42,20 @@ func ServeWs(w http.ResponseWriter, r *http.Request, logger *slog.Logger, publis
 
 	go c.writePump()
 	c.readPump(ctx)
+}
+
+func ParseToken(w http.ResponseWriter, r *http.Request, secret string) (userID string, err error) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.Error(w, "must include token", http.StatusBadRequest)
+		return
+	}
+
+	userID, err = core.ParseTokenSubject(token, secret)
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	return
 }
