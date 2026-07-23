@@ -11,8 +11,6 @@ import (
 	"github.com/vradovic/aether/services/api/internal/db"
 )
 
-var ErrNotInConversation error = fmt.Errorf("user not in conversation")
-
 type publisher struct {
 	nc      *nats.Conn
 	pool    *pgxpool.Pool
@@ -31,14 +29,6 @@ func NewPublisher(nc *nats.Conn, pool *pgxpool.Pool, queries *db.Queries, subjec
 
 // Performs validation, db inserts and publishes to nats
 func (p publisher) publish(ctx context.Context, msg publishMessage) error {
-	ok, err := p.validateParticipant(ctx, msg.ConversationID, msg.SenderID)
-	if err != nil {
-		return err
-	}
-	if !ok { // not in convo
-		return ErrNotInConversation
-	}
-
 	ids, err := p.getRecipients(ctx, msg.ConversationID)
 	if err != nil {
 		return fmt.Errorf("getRecipients: %w", err)
@@ -61,28 +51,6 @@ func (p publisher) publish(ctx context.Context, msg publishMessage) error {
 	}
 
 	return nil
-}
-
-func (p publisher) validateParticipant(ctx context.Context, conversationIDString, userIDString string) (bool, error) {
-	conversationID, err := core.ParseUUID(conversationIDString)
-	if err != nil {
-		return false, err
-	}
-
-	userID, err := core.ParseUUID(userIDString)
-	if err != nil {
-		return false, err
-	}
-
-	ok, err := p.queries.IsConversationParticipant(ctx, db.IsConversationParticipantParams{
-		ConversationID: conversationID,
-		UserID:         userID,
-	})
-	if err != nil {
-		return false, err
-	}
-
-	return ok, nil
 }
 
 func (p publisher) getRecipients(ctx context.Context, conversationIDString string) ([]string, error) {
