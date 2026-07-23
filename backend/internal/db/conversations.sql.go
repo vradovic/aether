@@ -11,14 +11,118 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const deleteConversation = `-- name: DeleteConversation :exec
-DELETE FROM conversations
-WHERE id = $1
+const areContacts = `-- name: AreContacts :one
+SELECT EXISTS (
+    SELECT 1
+    FROM contacts
+    WHERE user1_id = LEAST($1::uuid, $2::uuid)
+      AND user2_id = GREATEST($1::uuid, $2::uuid)
+)
 `
 
-func (q *Queries) DeleteConversation(ctx context.Context, id pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deleteConversation, id)
-	return err
+type AreContactsParams struct {
+	UserID    pgtype.UUID
+	ContactID pgtype.UUID
+}
+
+func (q *Queries) AreContacts(ctx context.Context, arg AreContactsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, areContacts, arg.UserID, arg.ContactID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const createConversationWithCreator = `-- name: CreateConversationWithCreator :one
+WITH inserted_conversation AS (
+    INSERT INTO conversations (name, created_by)
+    VALUES ($1, $2)
+    RETURNING id, name, created_by, last_message_sequence, created_at, updated_at
+), inserted_participant AS (
+    INSERT INTO conversation_participants (conversation_id, user_id)
+    SELECT id, created_by
+    FROM inserted_conversation
+    RETURNING conversation_id
+)
+SELECT inserted_conversation.id, inserted_conversation.name, inserted_conversation.created_by, inserted_conversation.last_message_sequence, inserted_conversation.created_at, inserted_conversation.updated_at
+FROM inserted_conversation
+INNER JOIN inserted_participant
+    ON inserted_participant.conversation_id = inserted_conversation.id
+`
+
+type CreateConversationWithCreatorParams struct {
+	Name      pgtype.Text
+	CreatedBy pgtype.UUID
+}
+
+type CreateConversationWithCreatorRow struct {
+	ID                  pgtype.UUID
+	Name                pgtype.Text
+	CreatedBy           pgtype.UUID
+	LastMessageSequence int64
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
+}
+
+func (q *Queries) CreateConversationWithCreator(ctx context.Context, arg CreateConversationWithCreatorParams) (CreateConversationWithCreatorRow, error) {
+	row := q.db.QueryRow(ctx, createConversationWithCreator, arg.Name, arg.CreatedBy)
+	var i CreateConversationWithCreatorRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CreatedBy,
+		&i.LastMessageSequence,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const deleteConversation = `-- name: DeleteConversation :one
+DELETE FROM conversations
+WHERE id = $1
+  AND created_by = $2
+RETURNING id
+`
+
+type DeleteConversationParams struct {
+	ID        pgtype.UUID
+	CreatedBy pgtype.UUID
+}
+
+func (q *Queries) DeleteConversation(ctx context.Context, arg DeleteConversationParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, deleteConversation, arg.ID, arg.CreatedBy)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const deleteConversationParticipant = `-- name: DeleteConversationParticipant :one
+DELETE FROM conversation_participants cp
+USING conversations c
+WHERE cp.conversation_id = $1
+  AND cp.user_id = $2
+  AND c.id = cp.conversation_id
+  AND c.created_by = $3
+  AND cp.user_id <> c.created_by
+RETURNING cp.conversation_id, cp.user_id, cp.created_at, cp.updated_at
+`
+
+type DeleteConversationParticipantParams struct {
+	ConversationID pgtype.UUID
+	UserID         pgtype.UUID
+	CreatedBy      pgtype.UUID
+}
+
+func (q *Queries) DeleteConversationParticipant(ctx context.Context, arg DeleteConversationParticipantParams) (ConversationParticipant, error) {
+	row := q.db.QueryRow(ctx, deleteConversationParticipant, arg.ConversationID, arg.UserID, arg.CreatedBy)
+	var i ConversationParticipant
+	err := row.Scan(
+		&i.ConversationID,
+		&i.UserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const getConversationRecipientIDs = `-- name: GetConversationRecipientIDs :many
@@ -54,6 +158,7 @@ FROM conversations c
 INNER JOIN conversation_participants cp
     ON c.id = cp.conversation_id
 WHERE cp.user_id = $1
+ORDER BY c.updated_at DESC, c.id
 `
 
 func (q *Queries) GetConversationsForUser(ctx context.Context, userID pgtype.UUID) ([]Conversation, error) {
@@ -117,6 +222,12 @@ WHERE EXISTS (
     WHERE id = $1
         AND created_by = $3
 )
+AND EXISTS (
+    SELECT 1
+    FROM contacts
+    WHERE user1_id = LEAST($2, $3)
+      AND user2_id = GREATEST($2, $3)
+)
 RETURNING conversation_id, user_id, created_at, updated_at
 `
 
@@ -136,6 +247,26 @@ func (q *Queries) InsertConversationParticipant(ctx context.Context, arg InsertC
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const isConversationOwner = `-- name: IsConversationOwner :one
+SELECT EXISTS (
+    SELECT 1
+    FROM conversations
+    WHERE id = $1 AND created_by = $2
+)
+`
+
+type IsConversationOwnerParams struct {
+	ID        pgtype.UUID
+	CreatedBy pgtype.UUID
+}
+
+func (q *Queries) IsConversationOwner(ctx context.Context, arg IsConversationOwnerParams) (bool, error) {
+	row := q.db.QueryRow(ctx, isConversationOwner, arg.ID, arg.CreatedBy)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const isConversationParticipant = `-- name: IsConversationParticipant :one
@@ -176,16 +307,18 @@ const updateConversationName = `-- name: UpdateConversationName :one
 UPDATE conversations
 SET name = $1, updated_at = now()
 WHERE id = $2
+  AND created_by = $3
 RETURNING id, name, created_by, last_message_sequence, created_at, updated_at
 `
 
 type UpdateConversationNameParams struct {
-	Name pgtype.Text
-	ID   pgtype.UUID
+	Name      pgtype.Text
+	ID        pgtype.UUID
+	CreatedBy pgtype.UUID
 }
 
 func (q *Queries) UpdateConversationName(ctx context.Context, arg UpdateConversationNameParams) (Conversation, error) {
-	row := q.db.QueryRow(ctx, updateConversationName, arg.Name, arg.ID)
+	row := q.db.QueryRow(ctx, updateConversationName, arg.Name, arg.ID, arg.CreatedBy)
 	var i Conversation
 	err := row.Scan(
 		&i.ID,
