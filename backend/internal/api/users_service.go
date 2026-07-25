@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/vradovic/aether/services/api/internal/db"
+	"github.com/vradovic/aether/backend/internal/db"
 )
 
 type usersQuerier interface {

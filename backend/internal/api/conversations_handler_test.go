@@ -9,8 +9,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/vradovic/aether/services/api/internal/api"
-	"github.com/vradovic/aether/services/api/internal/core"
+	"github.com/vradovic/aether/backend/internal/api"
+	"github.com/vradovic/aether/backend/internal/core"
 )
 
 const testConversationID = "d56ba3a9-d89e-4474-aefa-6247d34b01f9"

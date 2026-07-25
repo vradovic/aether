@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d app_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+
+  nats:
+    image: nats:2.11-alpine
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+
+  realtime-service:
+    build:
+      context: ..
+      dockerfile: cmd/realtime/Dockerfile
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      SERVER_ADDRESS: ${SERVER_ADDRESS}
+      DB_ADDRESS: ${DB_ADDRESS}
+      NATS_ADDRESS: ${NATS_ADDRESS}
+      NATS_SUBJECT: ${NATS_SUBJECT}
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY}
+    depends_on:
+      db:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://realtime-service:8080/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+
+  k6:
+    image: grafana/k6:latest
+    depends_on:
+      realtime-service:
+        condition: service_healthy
+    volumes:
+      - ./tests:/tests:ro
+    environment:
+      WS_URL: ${WS_URL}
+    command: run /tests/script.js

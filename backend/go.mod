@@ -1,4 +1,4 @@
-module github.com/vradovic/aether/services/api
+module github.com/vradovic/aether/backend
 
 go 1.26.5
 

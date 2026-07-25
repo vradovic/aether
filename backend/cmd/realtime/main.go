@@ -9,8 +9,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go"
-	"github.com/vradovic/aether/services/api/internal/db"
-	"github.com/vradovic/aether/services/api/internal/realtime"
+	"github.com/vradovic/aether/backend/internal/db"
+	"github.com/vradovic/aether/backend/internal/realtime"
 )
 
 func main() {

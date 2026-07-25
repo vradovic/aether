@@ -5,8 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/vradovic/aether/services/api/internal/core"
-	"github.com/vradovic/aether/services/api/internal/realtime"
+	"github.com/vradovic/aether/backend/internal/core"
+	"github.com/vradovic/aether/backend/internal/realtime"
 )
 
 type TokenTest struct {

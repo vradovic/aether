@@ -9,8 +9,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/vradovic/aether/services/api/internal/core"
-	"github.com/vradovic/aether/services/api/internal/db"
+	"github.com/vradovic/aether/backend/internal/core"
+	"github.com/vradovic/aether/backend/internal/db"
 )
 
 const minPasswordLengthBytes = 8

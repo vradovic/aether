@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/vradovic/aether/services/api/internal/core"
+	"github.com/vradovic/aether/backend/internal/core"
 )
 
 type ConversationsService interface {

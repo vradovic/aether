@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/vradovic/aether/services/api/internal/api"
-	"github.com/vradovic/aether/services/api/internal/db"
+	"github.com/vradovic/aether/backend/internal/api"
+	"github.com/vradovic/aether/backend/internal/db"
 )
 
 func main() {

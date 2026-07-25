@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vradovic/aether/services/api/internal/api"
+	"github.com/vradovic/aether/backend/internal/api"
 )
 
 type fakeService struct{}
