@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: realtime
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: realtime }
+  template:
+    metadata:
+      labels: { app: realtime }
+    spec:
+      containers:
+        - name: realtime
+          image: aether/realtime
+          imagePullPolicy: Never
+          ports: [{ containerPort: 8080 }]
+          env:
+            - { name: SERVER_ADDRESS, value: ":8080" }
+            - { name: DB_ADDRESS, value: "postgres://postgres:password@postgres:5432/postgres" }
+            - { name: NATS_ADDRESS, value: "nats://nats:4222" }
+            - { name: JWT_SIGNING_KEY, value: "kjflsadjflkjdslkfjadslkjflkdsajflksajdflkdsjkfljsadflkjsldkf" }
+            - { name: NATS_SUBJECT, value: "message" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: realtime
+spec:
+  selector: { app: realtime }
+  ports: [{ port: 8080, targetPort: 8080 }]
