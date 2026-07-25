@@ -38,7 +38,7 @@ func main() {
 	authService := api.NewAuthService(queries, cfg.JWTSigningKey)
 	authHandler := api.NewAuthHandler(authService, logger)
 
-	contactsService := api.NewContactsService(queries)
+	contactsService := api.NewContactsService(queries, pool)
 	contactsHandler := api.NewContactsHandler(contactsService, logger)
 
 	conversationsService := api.NewConversationsService(queries, logger)

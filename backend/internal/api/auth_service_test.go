@@ -3,14 +3,10 @@ package api
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/vradovic/aether/backend/internal/core"
 	"github.com/vradovic/aether/backend/internal/db"
 )
@@ -199,55 +195,4 @@ func validRegisterInput(email, username string) RegisterInput {
 		firstName: "Test",
 		lastName:  "User",
 	}
-}
-
-func startAuthTestDatabase(t *testing.T, ctx context.Context) *pgx.Conn {
-	t.Helper()
-
-	container, err := postgres.Run(ctx,
-		"postgres:17-alpine",
-		postgres.WithDatabase("aether_test"),
-		postgres.WithUsername("aether"),
-		postgres.WithPassword("aether"),
-		postgres.BasicWaitStrategies(),
-	)
-	if container != nil {
-		t.Cleanup(func() {
-			if err := container.Terminate(context.Background()); err != nil {
-				t.Errorf("terminate PostgreSQL container: %v", err)
-			}
-		})
-	}
-	if err != nil {
-		t.Fatalf("start PostgreSQL container: %v", err)
-	}
-
-	connectionString, err := container.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		t.Fatalf("get PostgreSQL connection string: %v", err)
-	}
-	conn, err := pgx.Connect(ctx, connectionString)
-	if err != nil {
-		t.Fatalf("connect to PostgreSQL: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := conn.Close(context.Background()); err != nil {
-			t.Errorf("close PostgreSQL connection: %v", err)
-		}
-	})
-
-	migrationPath := filepath.Join("..", "..", "sql", "migrations", "20260709223158_create_users_table.sql")
-	migration, err := os.ReadFile(migrationPath)
-	if err != nil {
-		t.Fatalf("read users migration: %v", err)
-	}
-	upMigration, _, found := strings.Cut(string(migration), "-- +goose Down")
-	if !found {
-		t.Fatalf("users migration %s has no Goose down marker", migrationPath)
-	}
-	if _, err := conn.Exec(ctx, upMigration); err != nil {
-		t.Fatalf("apply users migration: %v", err)
-	}
-
-	return conn
 }

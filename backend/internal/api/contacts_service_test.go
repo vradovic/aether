@@ -1,26 +1,24 @@
-package api
+package api_test
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/vradovic/aether/backend/internal/api"
 	"github.com/vradovic/aether/backend/internal/core"
-	"github.com/vradovic/aether/backend/internal/db"
 )
 
 func TestContactsService(t *testing.T) {
 	ctx := context.Background()
-	conn := startContactsTestDatabase(t, ctx)
-	service := NewContactsService(db.New(conn))
+	pool, queries := startDatabase(t, ctx)
+	service := api.NewContactsService(queries, pool)
 
 	t.Run("send", func(t *testing.T) {
 		t.Run("creates a pending request for a trimmed username", func(t *testing.T) {
@@ -131,16 +129,16 @@ func TestContactsService(t *testing.T) {
 	})
 
 	t.Run("get pending contact requests", func(t *testing.T) {
-		recipientID := createContactsTestUser(t, ctx, conn, "pending_recipient")
-		olderSenderID := createContactsTestUser(t, ctx, conn, "pending_older_sender")
-		newerSenderID := createContactsTestUser(t, ctx, conn, "pending_newer_sender")
-		outgoingRecipientID := createContactsTestUser(t, ctx, conn, "pending_outgoing_recipient")
-		declinedSenderID := createContactsTestUser(t, ctx, conn, "pending_declined_sender")
+		recipientID := createContactsTestUser(t, ctx, pool, "pending_recipient")
+		olderSenderID := createContactsTestUser(t, ctx, pool, "pending_older_sender")
+		newerSenderID := createContactsTestUser(t, ctx, pool, "pending_newer_sender")
+		outgoingRecipientID := createContactsTestUser(t, ctx, pool, "pending_outgoing_recipient")
+		declinedSenderID := createContactsTestUser(t, ctx, pool, "pending_declined_sender")
 
-		olderID := insertContactsTestRequest(t, ctx, conn, olderSenderID, recipientID, "pending", time.Now().Add(-time.Hour))
-		newerID := insertContactsTestRequest(t, ctx, conn, newerSenderID, recipientID, "pending", time.Now())
-		insertContactsTestRequest(t, ctx, conn, recipientID, outgoingRecipientID, "pending", time.Now().Add(time.Hour))
-		insertContactsTestRequest(t, ctx, conn, declinedSenderID, recipientID, "declined", time.Now().Add(2*time.Hour))
+		olderID := insertContactsTestRequest(t, ctx, pool, olderSenderID, recipientID, "pending", time.Now().Add(-time.Hour))
+		newerID := insertContactsTestRequest(t, ctx, pool, newerSenderID, recipientID, "pending", time.Now())
+		insertContactsTestRequest(t, ctx, pool, recipientID, outgoingRecipientID, "pending", time.Now().Add(time.Hour))
+		insertContactsTestRequest(t, ctx, pool, declinedSenderID, recipientID, "declined", time.Now().Add(2*time.Hour))
 
 		requests, err := service.GetPendingContactRequests(ctx, recipientID.String())
 		if err != nil {
@@ -189,16 +187,16 @@ func TestContactsService(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				senderID := createContactsTestUser(t, ctx, conn, tt.name+"_sender")
-				recipientID := createContactsTestUser(t, ctx, conn, tt.name+"_recipient")
+				senderID := createContactsTestUser(t, ctx, pool, tt.name+"_sender")
+				recipientID := createContactsTestUser(t, ctx, pool, tt.name+"_recipient")
 				requestID, err := service.Send(ctx, senderID.String(), tt.name+"_recipient")
 				if err != nil {
 					t.Fatalf("seed Send() error = %v", err)
 				}
 
 				err = tt.mutate(ctx, tt.wrongActor(senderID, recipientID).String(), requestID)
-				if !errors.Is(err, ErrRequestNotFound) {
-					t.Fatalf("mutation by wrong actor error = %v, want %v", err, ErrRequestNotFound)
+				if !errors.Is(err, api.ErrRequestNotFound) {
+					t.Fatalf("mutation by wrong actor error = %v, want %v", err, api.ErrRequestNotFound)
 				}
 
 				actorID := senderID
@@ -210,15 +208,15 @@ func TestContactsService(t *testing.T) {
 				}
 
 				var status string
-				if err := conn.QueryRow(ctx, "SELECT status FROM contact_requests WHERE id = $1", requestID).Scan(&status); err != nil {
+				if err := pool.QueryRow(ctx, "SELECT status FROM contact_requests WHERE id = $1", requestID).Scan(&status); err != nil {
 					t.Fatalf("query request status: %v", err)
 				}
 				if status != tt.wantStatus {
 					t.Fatalf("request status = %q, want %q", status, tt.wantStatus)
 				}
 
-				if err := tt.mutate(ctx, actorID.String(), requestID); !errors.Is(err, ErrRequestNotFound) {
-					t.Fatalf("repeated mutation error = %v, want %v", err, ErrRequestNotFound)
+				if err := tt.mutate(ctx, actorID.String(), requestID); !errors.Is(err, api.ErrRequestNotFound) {
+					t.Fatalf("repeated mutation error = %v, want %v", err, api.ErrRequestNotFound)
 				}
 			})
 		}
@@ -259,35 +257,11 @@ func TestContactsService(t *testing.T) {
 	})
 }
 
-func startContactsTestDatabase(t *testing.T, ctx context.Context) *pgx.Conn {
-	t.Helper()
-
-	conn := startAuthTestDatabase(t, ctx)
-	for _, migrationName := range []string{
-		"20260710211453_create_contacts.sql",
-		"20260710214332_add_contact_requests.sql",
-	} {
-		migrationPath := filepath.Join("..", "..", "sql", "migrations", migrationName)
-		migration, err := os.ReadFile(migrationPath)
-		if err != nil {
-			t.Fatalf("read migration %s: %v", migrationName, err)
-		}
-		upMigration, _, found := strings.Cut(string(migration), "-- +goose Down")
-		if !found {
-			t.Fatalf("migration %s has no Goose down marker", migrationName)
-		}
-		if _, err := conn.Exec(ctx, upMigration); err != nil {
-			t.Fatalf("apply migration %s: %v", migrationName, err)
-		}
-	}
-	return conn
-}
-
-func createContactsTestUser(t *testing.T, ctx context.Context, conn *pgx.Conn, username string) pgtype.UUID {
+func createContactsTestUser(t *testing.T, ctx context.Context, pool *pgxpool.Pool, username string) pgtype.UUID {
 	t.Helper()
 
 	var id pgtype.UUID
-	err := conn.QueryRow(ctx, `
+	err := pool.QueryRow(ctx, `
 		INSERT INTO users (email, username, password_hash, first_name, last_name)
 		VALUES ($1, $2, 'unused-password-hash', 'Test', 'User')
 		RETURNING id`, fmt.Sprintf("%s@example.com", username), username).Scan(&id)
@@ -300,7 +274,7 @@ func createContactsTestUser(t *testing.T, ctx context.Context, conn *pgx.Conn, u
 func insertContactsTestRequest(
 	t *testing.T,
 	ctx context.Context,
-	conn *pgx.Conn,
+	pool *pgxpool.Pool,
 	senderID pgtype.UUID,
 	recipientID pgtype.UUID,
 	status string,
@@ -309,7 +283,7 @@ func insertContactsTestRequest(
 	t.Helper()
 
 	var id pgtype.UUID
-	err := conn.QueryRow(ctx, `
+	err := pool.QueryRow(ctx, `
 		INSERT INTO contact_requests (sender_id, recipient_id, status, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $4)
 		RETURNING id`, senderID, recipientID, status, createdAt).Scan(&id)
