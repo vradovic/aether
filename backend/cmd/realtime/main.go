@@ -61,6 +61,7 @@ func main() {
 		realtime.ServeWs(w, r, logger, publisher, router, cfg.JWTSigningKey)
 	})
 	mux.Handle("/ws", wsHandler)
+	mux.HandleFunc("/healthz", realtime.Healthz)
 
 	server := &http.Server{
 		Addr:              cfg.ServerAddress,

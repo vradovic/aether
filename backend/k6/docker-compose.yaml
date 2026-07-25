@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   db:
@@ -12,6 +12,23 @@ services:
       interval: 3s
       timeout: 3s
       retries: 5
+
+  migrate-and-seed:
+    image: gomicro/goose
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      GOOSE_DRIVER: postgres
+      GOOSE_DBSTRING: "host=db port=5432 user=admin password=password dbname=aether sslmode=disable"
+    volumes:
+      - ../sql/migrations:/migrations
+      - ../sql/seeds:/seeds
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        goose -dir /migrations -no-versioning up &&
+        goose -dir /seeds -no-versioning up
 
   nats:
     image: nats:2.11-alpine
@@ -35,12 +52,12 @@ services:
       NATS_SUBJECT: ${NATS_SUBJECT}
       JWT_SIGNING_KEY: ${JWT_SIGNING_KEY}
     depends_on:
-      db:
+      migrate-and-seed:
         condition: service_healthy
       nats:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://realtime-service:8080/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://realtime-service:8080/healthz"]
       interval: 3s
       timeout: 3s
       retries: 5

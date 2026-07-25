@@ -44,6 +44,10 @@ func ServeWs(w http.ResponseWriter, r *http.Request, logger *slog.Logger, publis
 	c.readPump(ctx)
 }
 
+func Healthz(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusOK)
+}
+
 func ParseToken(w http.ResponseWriter, r *http.Request, secret string) (userID string, err error) {
 	token := r.URL.Query().Get("token")
 	if token == "" {
