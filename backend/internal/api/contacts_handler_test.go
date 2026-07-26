@@ -17,10 +17,9 @@ import (
 )
 
 const (
-	testSigningKey = "secret"
-	testIssuer     = "aether"
-	testUserID     = "550e8400-e29b-41d4-a716-446655440000"
-	testRequestID  = "7b4166d7-4772-4f3a-82a3-9066a9f179b8"
+	testIssuer    = "aether"
+	testUserID    = "550e8400-e29b-41d4-a716-446655440000"
+	testRequestID = "7b4166d7-4772-4f3a-82a3-9066a9f179b8"
 )
 
 type fakeContactsService struct {

@@ -193,15 +193,15 @@ func (q *Queries) GetPendingContactRequests(ctx context.Context, recipientID pgt
 const insertContact = `-- name: InsertContact :one
 INSERT INTO contacts (user1_id, user2_id)
 VALUES (
-  LEAST($1, $2),
-  GREATEST($1, $2)
+  LEAST($1::uuid, $2::uuid),
+  GREATEST($1::uuid, $2::uuid)
 )
 RETURNING user1_id, user2_id, created_at
 `
 
 type InsertContactParams struct {
-	Column1 interface{}
-	Column2 interface{}
+	Column1 pgtype.UUID
+	Column2 pgtype.UUID
 }
 
 func (q *Queries) InsertContact(ctx context.Context, arg InsertContactParams) (Contact, error) {

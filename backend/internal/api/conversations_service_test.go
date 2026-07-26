@@ -1,29 +1,27 @@
-package api
+package api_test
 
 import (
 	"context"
 	"errors"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/vradovic/aether/backend/internal/api"
 	"github.com/vradovic/aether/backend/internal/core"
-	"github.com/vradovic/aether/backend/internal/db"
 )
 
 func TestConversationsService(t *testing.T) {
 	ctx := context.Background()
-	conn := startConversationsTestDatabase(t, ctx)
-	service := NewConversationsService(db.New(conn), slog.New(slog.DiscardHandler))
+	pool, queries := startDatabase(t, ctx)
+	service := api.NewConversationsService(queries, slog.New(slog.DiscardHandler))
 
-	ownerID := createContactsTestUser(t, ctx, conn, "conversation_owner")
-	contactID := createContactsTestUser(t, ctx, conn, "conversation_contact")
-	nonContactID := createContactsTestUser(t, ctx, conn, "conversation_non_contact")
-	insertConversationTestContact(t, ctx, conn, ownerID, contactID)
+	ownerID := createContactsTestUser(t, ctx, pool, "conversation_owner")
+	contactID := createContactsTestUser(t, ctx, pool, "conversation_contact")
+	nonContactID := createContactsTestUser(t, ctx, pool, "conversation_non_contact")
+	insertConversationTestContact(t, ctx, pool, ownerID, contactID)
 
 	t.Run("create atomically adds the creator", func(t *testing.T) {
 		conversation, err := service.CreateConversation(ctx, "  Team chat  ", ownerID.String())
@@ -35,7 +33,7 @@ func TestConversationsService(t *testing.T) {
 		}
 
 		var participantCount int
-		if err := conn.QueryRow(ctx, `
+		if err := pool.QueryRow(ctx, `
 			SELECT count(*)
 			FROM conversation_participants
 			WHERE conversation_id = $1 AND user_id = $2`, conversation.ID, ownerID).Scan(&participantCount); err != nil {
@@ -68,14 +66,14 @@ func TestConversationsService(t *testing.T) {
 			t.Fatalf("updated name = %q, want Project chat", updated.Name)
 		}
 
-		if _, err := service.UpdateConversation(ctx, "Nope", contactID.String(), conversation.ID); !errors.Is(err, ErrConversationNotFound) {
-			t.Fatalf("non-owner update error = %v, want %v", err, ErrConversationNotFound)
+		if _, err := service.UpdateConversation(ctx, "Nope", contactID.String(), conversation.ID); !errors.Is(err, api.ErrConversationNotFound) {
+			t.Fatalf("non-owner update error = %v, want %v", err, api.ErrConversationNotFound)
 		}
-		if _, err := service.UpdateConversation(ctx, " ", ownerID.String(), conversation.ID); !errors.Is(err, ErrInvalidConversationName) {
-			t.Fatalf("blank-name update error = %v, want %v", err, ErrInvalidConversationName)
+		if _, err := service.UpdateConversation(ctx, " ", ownerID.String(), conversation.ID); !errors.Is(err, api.ErrInvalidConversationName) {
+			t.Fatalf("blank-name update error = %v, want %v", err, api.ErrInvalidConversationName)
 		}
-		if _, err := service.UpdateConversation(ctx, strings.Repeat("x", 51), ownerID.String(), conversation.ID); !errors.Is(err, ErrInvalidConversationName) {
-			t.Fatalf("long-name update error = %v, want %v", err, ErrInvalidConversationName)
+		if _, err := service.UpdateConversation(ctx, strings.Repeat("x", 51), ownerID.String(), conversation.ID); !errors.Is(err, api.ErrInvalidConversationName) {
+			t.Fatalf("long-name update error = %v, want %v", err, api.ErrInvalidConversationName)
 		}
 	})
 
@@ -88,14 +86,14 @@ func TestConversationsService(t *testing.T) {
 			t.Fatalf("AddParticipant() = %+v", participant)
 		}
 
-		if _, err := service.AddParticipant(ctx, ownerID.String(), conversation.ID, contactID.String()); !errors.Is(err, ErrParticipantExists) {
-			t.Fatalf("duplicate AddParticipant() error = %v, want %v", err, ErrParticipantExists)
+		if _, err := service.AddParticipant(ctx, ownerID.String(), conversation.ID, contactID.String()); !errors.Is(err, api.ErrParticipantExists) {
+			t.Fatalf("duplicate AddParticipant() error = %v, want %v", err, api.ErrParticipantExists)
 		}
-		if _, err := service.AddParticipant(ctx, ownerID.String(), conversation.ID, nonContactID.String()); !errors.Is(err, ErrParticipantNotContact) {
-			t.Fatalf("non-contact AddParticipant() error = %v, want %v", err, ErrParticipantNotContact)
+		if _, err := service.AddParticipant(ctx, ownerID.String(), conversation.ID, nonContactID.String()); !errors.Is(err, api.ErrParticipantNotContact) {
+			t.Fatalf("non-contact AddParticipant() error = %v, want %v", err, api.ErrParticipantNotContact)
 		}
-		if _, err := service.AddParticipant(ctx, contactID.String(), conversation.ID, nonContactID.String()); !errors.Is(err, ErrConversationNotFound) {
-			t.Fatalf("non-owner AddParticipant() error = %v, want %v", err, ErrConversationNotFound)
+		if _, err := service.AddParticipant(ctx, contactID.String(), conversation.ID, nonContactID.String()); !errors.Is(err, api.ErrConversationNotFound) {
+			t.Fatalf("non-owner AddParticipant() error = %v, want %v", err, api.ErrConversationNotFound)
 		}
 	})
 
@@ -126,7 +124,7 @@ func TestConversationsService(t *testing.T) {
 	})
 
 	t.Run("gets messages after the requested sequence for participants", func(t *testing.T) {
-		seedConversationTestMessages(t, ctx, conn, conversation.ID, ownerID, contactID)
+		seedConversationTestMessages(t, ctx, pool, conversation.ID, ownerID, contactID)
 
 		messages, err := service.GetMessages(ctx, contactID.String(), conversation.ID, 1)
 		if err != nil {
@@ -139,52 +137,52 @@ func TestConversationsService(t *testing.T) {
 			t.Fatalf("message mapping is incomplete: %+v", messages[0])
 		}
 
-		if _, err := service.GetMessages(ctx, nonContactID.String(), conversation.ID, 0); !errors.Is(err, ErrConversationNotFound) {
-			t.Fatalf("outsider GetMessages() error = %v, want %v", err, ErrConversationNotFound)
+		if _, err := service.GetMessages(ctx, nonContactID.String(), conversation.ID, 0); !errors.Is(err, api.ErrConversationNotFound) {
+			t.Fatalf("outsider GetMessages() error = %v, want %v", err, api.ErrConversationNotFound)
 		}
-		if _, err := service.GetMessages(ctx, ownerID.String(), conversation.ID, -1); !errors.Is(err, ErrInvalidAfterSequence) {
-			t.Fatalf("negative sequence error = %v, want %v", err, ErrInvalidAfterSequence)
+		if _, err := service.GetMessages(ctx, ownerID.String(), conversation.ID, -1); !errors.Is(err, api.ErrInvalidAfterSequence) {
+			t.Fatalf("negative sequence error = %v, want %v", err, api.ErrInvalidAfterSequence)
 		}
 	})
 
 	t.Run("only the owner can remove non-owner participants", func(t *testing.T) {
-		if err := service.RemoveParticipant(ctx, contactID.String(), conversation.ID, ownerID.String()); !errors.Is(err, ErrParticipantNotFound) {
-			t.Fatalf("non-owner RemoveParticipant() error = %v, want %v", err, ErrParticipantNotFound)
+		if err := service.RemoveParticipant(ctx, contactID.String(), conversation.ID, ownerID.String()); !errors.Is(err, api.ErrParticipantNotFound) {
+			t.Fatalf("non-owner RemoveParticipant() error = %v, want %v", err, api.ErrParticipantNotFound)
 		}
-		if err := service.RemoveParticipant(ctx, ownerID.String(), conversation.ID, ownerID.String()); !errors.Is(err, ErrParticipantNotFound) {
-			t.Fatalf("remove creator error = %v, want %v", err, ErrParticipantNotFound)
+		if err := service.RemoveParticipant(ctx, ownerID.String(), conversation.ID, ownerID.String()); !errors.Is(err, api.ErrParticipantNotFound) {
+			t.Fatalf("remove creator error = %v, want %v", err, api.ErrParticipantNotFound)
 		}
 		if err := service.RemoveParticipant(ctx, ownerID.String(), conversation.ID, contactID.String()); err != nil {
 			t.Fatalf("RemoveParticipant() error = %v", err)
 		}
-		if _, err := service.GetMessages(ctx, contactID.String(), conversation.ID, 0); !errors.Is(err, ErrConversationNotFound) {
-			t.Fatalf("removed participant GetMessages() error = %v, want %v", err, ErrConversationNotFound)
+		if _, err := service.GetMessages(ctx, contactID.String(), conversation.ID, 0); !errors.Is(err, api.ErrConversationNotFound) {
+			t.Fatalf("removed participant GetMessages() error = %v, want %v", err, api.ErrConversationNotFound)
 		}
 	})
 
 	t.Run("only the owner can delete and deletion cascades", func(t *testing.T) {
-		if err := service.DeleteConversation(ctx, contactID.String(), conversation.ID); !errors.Is(err, ErrConversationNotFound) {
-			t.Fatalf("non-owner DeleteConversation() error = %v, want %v", err, ErrConversationNotFound)
+		if err := service.DeleteConversation(ctx, contactID.String(), conversation.ID); !errors.Is(err, api.ErrConversationNotFound) {
+			t.Fatalf("non-owner DeleteConversation() error = %v, want %v", err, api.ErrConversationNotFound)
 		}
 		if err := service.DeleteConversation(ctx, ownerID.String(), conversation.ID); err != nil {
 			t.Fatalf("DeleteConversation() error = %v", err)
 		}
 
 		var conversations, participants, messages int
-		if err := conn.QueryRow(ctx, "SELECT count(*) FROM conversations WHERE id = $1", conversation.ID).Scan(&conversations); err != nil {
+		if err := pool.QueryRow(ctx, "SELECT count(*) FROM conversations WHERE id = $1", conversation.ID).Scan(&conversations); err != nil {
 			t.Fatalf("count deleted conversation: %v", err)
 		}
-		if err := conn.QueryRow(ctx, "SELECT count(*) FROM conversation_participants WHERE conversation_id = $1", conversation.ID).Scan(&participants); err != nil {
+		if err := pool.QueryRow(ctx, "SELECT count(*) FROM conversation_participants WHERE conversation_id = $1", conversation.ID).Scan(&participants); err != nil {
 			t.Fatalf("count deleted participants: %v", err)
 		}
-		if err := conn.QueryRow(ctx, "SELECT count(*) FROM messages WHERE conversation_id = $1", conversation.ID).Scan(&messages); err != nil {
+		if err := pool.QueryRow(ctx, "SELECT count(*) FROM messages WHERE conversation_id = $1", conversation.ID).Scan(&messages); err != nil {
 			t.Fatalf("count deleted messages: %v", err)
 		}
 		if conversations != 0 || participants != 0 || messages != 0 {
 			t.Fatalf("delete counts = conversations:%d participants:%d messages:%d, want all zero", conversations, participants, messages)
 		}
-		if err := service.DeleteConversation(ctx, ownerID.String(), conversation.ID); !errors.Is(err, ErrConversationNotFound) {
-			t.Fatalf("repeated DeleteConversation() error = %v, want %v", err, ErrConversationNotFound)
+		if err := service.DeleteConversation(ctx, ownerID.String(), conversation.ID); !errors.Is(err, api.ErrConversationNotFound) {
+			t.Fatalf("repeated DeleteConversation() error = %v, want %v", err, api.ErrConversationNotFound)
 		}
 	})
 
@@ -192,8 +190,8 @@ func TestConversationsService(t *testing.T) {
 		if _, err := service.CreateConversation(ctx, "Name", "invalid"); !errors.Is(err, core.ErrInvalidID) {
 			t.Fatalf("invalid creator error = %v, want %v", err, core.ErrInvalidID)
 		}
-		if _, err := service.GetMessages(ctx, ownerID.String(), "invalid", 0); !errors.Is(err, ErrInvalidConversationID) {
-			t.Fatalf("invalid conversation error = %v, want %v", err, ErrInvalidConversationID)
+		if _, err := service.GetMessages(ctx, ownerID.String(), "invalid", 0); !errors.Is(err, api.ErrInvalidConversationID) {
+			t.Fatalf("invalid conversation error = %v, want %v", err, api.ErrInvalidConversationID)
 		}
 		if _, err := service.GetConversations(ctx, "invalid"); !errors.Is(err, core.ErrInvalidID) {
 			t.Fatalf("invalid user error = %v, want %v", err, core.ErrInvalidID)
@@ -201,54 +199,30 @@ func TestConversationsService(t *testing.T) {
 	})
 }
 
-func startConversationsTestDatabase(t *testing.T, ctx context.Context) *pgx.Conn {
+func insertConversationTestContact(t *testing.T, ctx context.Context, pool *pgxpool.Pool, user1ID, user2ID pgtype.UUID) {
 	t.Helper()
-	conn := startContactsTestDatabase(t, ctx)
-	for _, migrationName := range []string{
-		"20260714083914_create_conversations.sql",
-		"20260714084931_create_conversation_participants.sql",
-		"20260714114624_create_messages_table.sql",
-	} {
-		migrationPath := filepath.Join("..", "..", "sql", "migrations", migrationName)
-		migration, err := os.ReadFile(migrationPath)
-		if err != nil {
-			t.Fatalf("read migration %s: %v", migrationName, err)
-		}
-		upMigration, _, found := strings.Cut(string(migration), "-- +goose Down")
-		if !found {
-			t.Fatalf("migration %s has no Goose down marker", migrationName)
-		}
-		if _, err := conn.Exec(ctx, upMigration); err != nil {
-			t.Fatalf("apply migration %s: %v", migrationName, err)
-		}
-	}
-	return conn
-}
-
-func insertConversationTestContact(t *testing.T, ctx context.Context, conn *pgx.Conn, user1ID, user2ID pgtype.UUID) {
-	t.Helper()
-	if _, err := conn.Exec(ctx, `
+	if _, err := pool.Exec(ctx, `
 		INSERT INTO contacts (user1_id, user2_id)
 		VALUES (LEAST($1::uuid, $2::uuid), GREATEST($1::uuid, $2::uuid))`, user1ID, user2ID); err != nil {
 		t.Fatalf("insert conversation test contact: %v", err)
 	}
 }
 
-func seedConversationTestMessages(t *testing.T, ctx context.Context, conn *pgx.Conn, conversationID string, ownerID, contactID pgtype.UUID) {
+func seedConversationTestMessages(t *testing.T, ctx context.Context, pool *pgxpool.Pool, conversationID string, ownerID, contactID pgtype.UUID) {
 	t.Helper()
 	for sequence, senderID := range []pgtype.UUID{ownerID, contactID, ownerID} {
-		if _, err := conn.Exec(ctx, `
+		if _, err := pool.Exec(ctx, `
 			INSERT INTO messages (conversation_id, sender_id, client_message_id, message_sequence, body)
 			VALUES ($1, $2, gen_random_uuid(), $3, $4)`, conversationID, senderID, sequence+1, "message body"); err != nil {
 			t.Fatalf("insert message sequence %d: %v", sequence+1, err)
 		}
 	}
-	if _, err := conn.Exec(ctx, "UPDATE conversations SET last_message_sequence = 3 WHERE id = $1", conversationID); err != nil {
+	if _, err := pool.Exec(ctx, "UPDATE conversations SET last_message_sequence = 3 WHERE id = $1", conversationID); err != nil {
 		t.Fatalf("update last message sequence: %v", err)
 	}
 }
 
-func containsConversation(conversations []Conversation, id, name string) bool {
+func containsConversation(conversations []api.Conversation, id, name string) bool {
 	for _, conversation := range conversations {
 		if conversation.ID == id && conversation.Name == name {
 			return true

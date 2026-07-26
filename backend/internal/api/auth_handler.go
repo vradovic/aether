@@ -93,17 +93,17 @@ func (h *authHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err = h.svc.Register(r.Context(), RegisterInput{
-		email:     dto.Email,
-		username:  dto.Username,
-		password:  dto.Password,
-		firstName: dto.FirstName,
-		lastName:  dto.LastName,
+		Email:     dto.Email,
+		Username:  dto.Username,
+		Password:  dto.Password,
+		FirstName: dto.FirstName,
+		LastName:  dto.LastName,
 	})
 	if err != nil {
-		if errors.Is(err, errPasswordLength) ||
-			errors.Is(err, errNameLength) ||
-			errors.Is(err, errUsernameLength) ||
-			errors.Is(err, errEmailFormat) {
+		if errors.Is(err, ErrPasswordLength) ||
+			errors.Is(err, ErrNameLength) ||
+			errors.Is(err, ErrUsernameLength) ||
+			errors.Is(err, ErrEmailFormat) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}

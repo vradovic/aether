@@ -7,9 +7,14 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/vradovic/aether/backend/internal/db"
+)
+
+const (
+	testSigningKey = "integration-test-signing-key"
 )
 
 func startDatabase(t *testing.T, ctx context.Context) (*pgxpool.Pool, *db.Queries) {
@@ -40,17 +45,17 @@ func startDatabase(t *testing.T, ctx context.Context) (*pgxpool.Pool, *db.Querie
 
 	sqlDB, err := sql.Open("pgx", connectionString)
 	if err != nil {
-		t.Fatalf("sql open error: %w", err)
+		t.Fatalf("sql open error: %v", err)
 	}
 	defer sqlDB.Close()
 
 	if err := goose.SetDialect("postgres"); err != nil {
-		t.Fatalf("goose set dialect error: %w", err)
+		t.Fatalf("goose set dialect error: %v", err)
 	}
 
 	migrationsDir := filepath.Join("..", "..", "sql", "migrations")
-	if err := goose.Up(sqlDB, migrationsDir); err != nil {
-		t.Fatalf("goose up error: %w", err)
+	if err := goose.Up(sqlDB, migrationsDir, goose.WithNoVersioning()); err != nil {
+		t.Fatalf("goose up error: %v", err)
 	}
 
 	pool, err := pgxpool.New(ctx, connectionString)

@@ -1,4 +1,4 @@
-package api
+package api_test
 
 import (
 	"context"
@@ -7,28 +7,23 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/vradovic/aether/backend/internal/api"
 	"github.com/vradovic/aether/backend/internal/core"
-	"github.com/vradovic/aether/backend/internal/db"
-)
-
-const (
-	testSigningKey = "integration-test-signing-key"
 )
 
 func TestAuthService(t *testing.T) {
 	ctx := context.Background()
-	conn := startAuthTestDatabase(t, ctx)
-	queries := db.New(conn)
-	service := NewAuthService(queries, testSigningKey)
+	pool, queries := startDatabase(t, ctx)
+	service := api.NewAuthService(queries, testSigningKey)
 
 	t.Run("register", func(t *testing.T) {
 		t.Run("stores normalized user and hashed password", func(t *testing.T) {
-			input := RegisterInput{
-				email:     "  Alice.Example@EXAMPLE.COM ",
-				username:  "  alice_example  ",
-				password:  "correct-horse-battery-staple",
-				firstName: "  Alice  ",
-				lastName:  "  Example  ",
+			input := api.RegisterInput{
+				Email:     "  Alice.Example@EXAMPLE.COM ",
+				Username:  "  alice_example  ",
+				Password:  "correct-horse-battery-staple",
+				FirstName: "  Alice  ",
+				LastName:  "  Example  ",
 			}
 
 			if err := service.Register(ctx, input); err != nil {
@@ -36,7 +31,7 @@ func TestAuthService(t *testing.T) {
 			}
 
 			var email, username, passwordHash, firstName, lastName string
-			err := conn.QueryRow(ctx, `
+			err := pool.QueryRow(ctx, `
 				SELECT email, username, password_hash, first_name, last_name
 				FROM users
 				WHERE email = $1`, "alice.example@example.com").Scan(
@@ -51,10 +46,10 @@ func TestAuthService(t *testing.T) {
 				t.Fatalf("user was not normalized: email=%q username=%q firstName=%q lastName=%q",
 					email, username, firstName, lastName)
 			}
-			if passwordHash == input.password {
+			if passwordHash == input.Password {
 				t.Fatal("password was stored as plaintext")
 			}
-			if err := verifyPassword(input.password, passwordHash); err != nil {
+			if err := api.VerifyPassword(input.Password, passwordHash); err != nil {
 				t.Fatalf("stored password hash does not match password: %v", err)
 			}
 		})
@@ -62,16 +57,16 @@ func TestAuthService(t *testing.T) {
 		t.Run("rejects invalid input without writing", func(t *testing.T) {
 			tests := []struct {
 				name   string
-				mutate func(*RegisterInput)
+				mutate func(*api.RegisterInput)
 				want   error
 			}{
-				{name: "invalid email", mutate: func(i *RegisterInput) { i.email = "not-an-email" }, want: errEmailFormat},
-				{name: "short password", mutate: func(i *RegisterInput) { i.password = "short" }, want: errPasswordLength},
-				{name: "long password", mutate: func(i *RegisterInput) { i.password = strings.Repeat("a", maxPasswordLengthBytes+1) }, want: errPasswordLength},
-				{name: "short username", mutate: func(i *RegisterInput) { i.username = "ab" }, want: errUsernameLength},
-				{name: "long username", mutate: func(i *RegisterInput) { i.username = strings.Repeat("a", maxUsernameLength+1) }, want: errUsernameLength},
-				{name: "short first name", mutate: func(i *RegisterInput) { i.firstName = "A" }, want: errNameLength},
-				{name: "long last name", mutate: func(i *RegisterInput) { i.lastName = strings.Repeat("a", maxNameLength+1) }, want: errNameLength},
+				{name: "invalid email", mutate: func(i *api.RegisterInput) { i.Email = "not-an-email" }, want: api.ErrEmailFormat},
+				{name: "short password", mutate: func(i *api.RegisterInput) { i.Password = "short" }, want: api.ErrPasswordLength},
+				{name: "long password", mutate: func(i *api.RegisterInput) { i.Password = strings.Repeat("a", api.MaxPasswordLengthBytes+1) }, want: api.ErrPasswordLength},
+				{name: "short username", mutate: func(i *api.RegisterInput) { i.Username = "ab" }, want: api.ErrUsernameLength},
+				{name: "long username", mutate: func(i *api.RegisterInput) { i.Username = strings.Repeat("a", api.MaxUsernameLength+1) }, want: api.ErrUsernameLength},
+				{name: "short first name", mutate: func(i *api.RegisterInput) { i.FirstName = "A" }, want: api.ErrNameLength},
+				{name: "long last name", mutate: func(i *api.RegisterInput) { i.LastName = strings.Repeat("a", api.MaxNameLength+1) }, want: api.ErrNameLength},
 			}
 
 			for _, tt := range tests {
@@ -86,7 +81,7 @@ func TestAuthService(t *testing.T) {
 					}
 
 					var count int
-					if err := conn.QueryRow(ctx, "SELECT count(*) FROM users WHERE email = $1", input.normalize().email).Scan(&count); err != nil {
+					if err := pool.QueryRow(ctx, "SELECT count(*) FROM users WHERE email = $1", input.Normalize().Email).Scan(&count); err != nil {
 						t.Fatalf("count users: %v", err)
 					}
 					if count != 0 {
@@ -104,7 +99,7 @@ func TestAuthService(t *testing.T) {
 
 			tests := []struct {
 				name       string
-				input      RegisterInput
+				input      api.RegisterInput
 				constraint string
 			}{
 				{
@@ -142,9 +137,9 @@ func TestAuthService(t *testing.T) {
 		}
 
 		t.Run("returns access token for normalized email", func(t *testing.T) {
-			output, err := service.Login(ctx, LoginInput{
+			output, err := service.Login(ctx, api.LoginInput{
 				Email:    "  LOGIN@EXAMPLE.COM ",
-				Password: input.password,
+				Password: input.Password,
 			})
 			if err != nil {
 				t.Fatalf("Login() error = %v", err)
@@ -153,7 +148,7 @@ func TestAuthService(t *testing.T) {
 				t.Fatal("Login() returned an empty access token")
 			}
 
-			credentials, err := queries.GetUserCredentialsByEmail(ctx, input.email)
+			credentials, err := queries.GetUserCredentialsByEmail(ctx, input.Email)
 			if err != nil {
 				t.Fatalf("get credentials: %v", err)
 			}
@@ -168,18 +163,18 @@ func TestAuthService(t *testing.T) {
 
 		tests := []struct {
 			name  string
-			input LoginInput
+			input api.LoginInput
 		}{
-			{name: "unknown email", input: LoginInput{Email: "missing@example.com", Password: input.password}},
-			{name: "wrong password", input: LoginInput{Email: input.email, Password: "wrong-password"}},
+			{name: "unknown email", input: api.LoginInput{Email: "missing@example.com", Password: input.Password}},
+			{name: "wrong password", input: api.LoginInput{Email: input.Email, Password: "wrong-password"}},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				output, err := service.Login(ctx, tt.input)
-				if !errors.Is(err, ErrInvalidCredentials) {
-					t.Fatalf("Login() error = %v, want %v", err, ErrInvalidCredentials)
+				if !errors.Is(err, api.ErrInvalidCredentials) {
+					t.Fatalf("Login() error = %v, want %v", err, api.ErrInvalidCredentials)
 				}
-				if output != (LoginOutput{}) {
+				if output != (api.LoginOutput{}) {
 					t.Fatalf("Login() output = %+v, want zero value", output)
 				}
 			})
@@ -187,12 +182,12 @@ func TestAuthService(t *testing.T) {
 	})
 }
 
-func validRegisterInput(email, username string) RegisterInput {
-	return RegisterInput{
-		email:     email,
-		username:  username,
-		password:  "valid-password",
-		firstName: "Test",
-		lastName:  "User",
+func validRegisterInput(email, username string) api.RegisterInput {
+	return api.RegisterInput{
+		Email:     email,
+		Username:  username,
+		Password:  "valid-password",
+		FirstName: "Test",
+		LastName:  "User",
 	}
 }

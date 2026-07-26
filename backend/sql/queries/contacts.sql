@@ -40,8 +40,8 @@ RETURNING *;
 -- name: InsertContact :one
 INSERT INTO contacts (user1_id, user2_id)
 VALUES (
-  LEAST($1, $2),
-  GREATEST($1, $2)
+  LEAST($1::uuid, $2::uuid),
+  GREATEST($1::uuid, $2::uuid)
 )
 RETURNING *;
 
