@@ -1,7 +1,6 @@
 services:
-  aether-postgres:
+  postgres:
     image: postgres:18-bookworm
-    container_name: aether-postgres
     restart: unless-stopped
 
     environment:
@@ -15,9 +14,8 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql
 
-  aether-swagger-ui:
+  swagger-ui:
     image: docker.swagger.io/swaggerapi/swagger-ui:v5.32.5
-    container_name: aether-swagger-ui
     restart: unless-stopped
 
     environment:
@@ -30,14 +28,44 @@ services:
       - ./docs/openapi.yaml:/openapi/openapi.yaml:ro
 
   nats:
-    container_name: aether-nats
     image: nats:2.11-alpine
     restart: unless-stopped
-    command: [ "-js" ]
+    command: [ "-js", "-m", "8222" ]
     ports:
       - "4222:4222"
       - "8222:8222"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
 
+  nats-box:
+    image: natsio/nats-box:latest
+    restart: "no"
+    depends_on:
+      nats:
+        condition: service_healthy
+    volumes:
+      - ./deployments/nats-stream.json:/config/nats-stream.json:ro
+      - ./deployments/nats-consumer.json:/config/nats-consumer.json:ro
+    entrypoint:
+      - sh
+      - -c
+      - |
+        nats stream info MESSAGES -s nats:4222 >/dev/null 2>&1 || nats stream add --config /config/nats-stream.json -s nats:4222
+        nats consumer info MESSAGES message-service -s nats:4222 >/dev/null 2>&1 || nats consumer add --config /config/nats-consumer.json -s nats:4222
+
+  scylla:
+    image: scylladb/scylla:6.2
+    restart: unless-stopped
+    command: --smp 1 --memory 1G --developer-mode 1
+    ports:
+      - "9042:9042"
+    volumes:
+      - scylla_data:/var/lib/scylla
+      - ./scylla:/scylla:ro
 
 volumes:
   postgres_data:
+  scylla_data:

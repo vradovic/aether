@@ -1,0 +1,10 @@
+{
+  "stream_name": "MESSAGES",
+  "durable_name": "message-service",
+  "deliver_policy": "all",
+  "ack_policy": "explicit",
+  "ack_wait": 30000000000,
+  "max_deliver": -1,
+  "filter_subject": "messages.unprocessed.*",
+  "replay_policy": "instant"
+}
