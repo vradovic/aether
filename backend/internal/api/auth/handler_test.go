@@ -1,4 +1,4 @@
-package api_test
+package auth_test
 
 import (
 	"context"
@@ -12,28 +12,29 @@ import (
 	"testing"
 
 	"github.com/vradovic/aether/backend/internal/api"
+	"github.com/vradovic/aether/backend/internal/api/auth"
 )
 
 type fakeService struct{}
 
-var successLoginInput = api.LoginInput{
+var successLoginInput = auth.LoginInput{
 	Email:    "john@example.com",
 	Password: "thisisjohn123",
 }
 
-func (f fakeService) Login(ctx context.Context, input api.LoginInput) (api.LoginOutput, error) {
+func (f fakeService) Login(ctx context.Context, input auth.LoginInput) (auth.LoginOutput, error) {
 	if input == successLoginInput {
-		return api.LoginOutput{
+		return auth.LoginOutput{
 			AccessToken: "12345",
 		}, nil
 	} else if input.Email == "crash@example.com" {
-		return api.LoginOutput{}, errors.New("random error")
+		return auth.LoginOutput{}, errors.New("random error")
 	} else {
-		return api.LoginOutput{}, api.ErrInvalidCredentials
+		return auth.LoginOutput{}, api.ErrInvalidCredentials
 	}
 }
 
-func (f fakeService) Register(ctx context.Context, input api.RegisterInput) error {
+func (f fakeService) Register(ctx context.Context, input auth.RegisterInput) error {
 	return nil
 }
 
@@ -81,7 +82,7 @@ func TestRegister(t *testing.T) {
 			fake := fakeService{}
 			logger := slog.New(slog.DiscardHandler)
 
-			handler := api.NewAuthHandler(fake, logger)
+			handler := auth.NewHandler(fake, logger)
 
 			handler.Register(rec, req)
 
@@ -110,7 +111,7 @@ func TestLogin(t *testing.T) {
 		fake := fakeService{}
 		logger := slog.New(slog.DiscardHandler)
 
-		handler := api.NewAuthHandler(fake, logger)
+		handler := auth.NewHandler(fake, logger)
 
 		handler.Login(rec, req)
 
@@ -138,7 +139,7 @@ func TestLogin(t *testing.T) {
 		fake := fakeService{}
 		logger := slog.New(slog.DiscardHandler)
 
-		handler := api.NewAuthHandler(fake, logger)
+		handler := auth.NewHandler(fake, logger)
 
 		handler.Login(rec, req)
 
@@ -161,7 +162,7 @@ func TestLogin(t *testing.T) {
 		fake := fakeService{}
 		logger := slog.New(slog.DiscardHandler)
 
-		handler := api.NewAuthHandler(fake, logger)
+		handler := auth.NewHandler(fake, logger)
 
 		handler.Login(rec, req)
 
@@ -184,7 +185,7 @@ func TestLogin(t *testing.T) {
 		fake := fakeService{}
 		logger := slog.New(slog.DiscardHandler)
 
-		handler := api.NewAuthHandler(fake, logger)
+		handler := auth.NewHandler(fake, logger)
 
 		handler.Login(rec, req)
 

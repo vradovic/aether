@@ -1,4 +1,4 @@
-package api
+package contacts
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/vradovic/aether/backend/internal/api"
 	"github.com/vradovic/aether/backend/internal/core"
 	"github.com/vradovic/aether/backend/internal/db"
 )
@@ -30,7 +31,7 @@ type contactRequestResponse struct {
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
-type ContactsService interface {
+type ServiceInterface interface {
 	Send(ctx context.Context, userID, username string) (pgtype.UUID, error)
 	GetPendingContactRequests(ctx context.Context, userID string) ([]db.ContactRequest, error)
 	Cancel(ctx context.Context, userID string, requestID pgtype.UUID) error
@@ -38,16 +39,16 @@ type ContactsService interface {
 	Decline(ctx context.Context, userID string, requestID pgtype.UUID) error
 }
 
-type contactsHandler struct {
-	service ContactsService
+type Handler struct {
+	service ServiceInterface
 	logger  *slog.Logger
 }
 
-func NewContactsHandler(service ContactsService, logger *slog.Logger) *contactsHandler {
-	return &contactsHandler{service: service, logger: logger}
+func NewHandler(service ServiceInterface, logger *slog.Logger) *Handler {
+	return &Handler{service: service, logger: logger}
 }
 
-func (h *contactsHandler) RegisterRoutes(mux *http.ServeMux, m Middleware) {
+func (h *Handler) RegisterRoutes(mux *http.ServeMux, m api.Middleware) {
 	mux.Handle("POST /contact-requests", m.RequireAuth(h.send))
 	mux.Handle("GET /contact-requests", m.RequireAuth(h.getPendingContactRequests))
 	mux.Handle("PATCH /contact-requests/{requestID}/cancel", m.RequireAuth(h.cancel))
@@ -55,7 +56,7 @@ func (h *contactsHandler) RegisterRoutes(mux *http.ServeMux, m Middleware) {
 	mux.Handle("PATCH /contact-requests/{requestID}/decline", m.RequireAuth(h.decline))
 }
 
-func (h *contactsHandler) getPendingContactRequests(w http.ResponseWriter, r *http.Request, userID string) {
+func (h *Handler) getPendingContactRequests(w http.ResponseWriter, r *http.Request, userID string) {
 	requests, err := h.service.GetPendingContactRequests(r.Context(), userID)
 	if err != nil {
 		h.writeError(w, err)
@@ -80,7 +81,7 @@ func (h *contactsHandler) getPendingContactRequests(w http.ResponseWriter, r *ht
 	}
 }
 
-func (h *contactsHandler) send(w http.ResponseWriter, r *http.Request, userID string) {
+func (h *Handler) send(w http.ResponseWriter, r *http.Request, userID string) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var request sendRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.Username == "" {
@@ -101,7 +102,7 @@ func (h *contactsHandler) send(w http.ResponseWriter, r *http.Request, userID st
 	}
 }
 
-func (h *contactsHandler) cancel(w http.ResponseWriter, r *http.Request, userID string) {
+func (h *Handler) cancel(w http.ResponseWriter, r *http.Request, userID string) {
 	var requestID pgtype.UUID
 	if err := requestID.Scan(r.PathValue("requestID")); err != nil || !requestID.Valid {
 		http.Error(w, "invalid contact request ID", http.StatusBadRequest)
@@ -114,7 +115,7 @@ func (h *contactsHandler) cancel(w http.ResponseWriter, r *http.Request, userID 
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *contactsHandler) accept(w http.ResponseWriter, r *http.Request, userID string) {
+func (h *Handler) accept(w http.ResponseWriter, r *http.Request, userID string) {
 	var requestID pgtype.UUID
 	if err := requestID.Scan(r.PathValue("requestID")); err != nil || !requestID.Valid {
 		http.Error(w, "invalid contact request ID", http.StatusBadRequest)
@@ -127,7 +128,7 @@ func (h *contactsHandler) accept(w http.ResponseWriter, r *http.Request, userID 
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *contactsHandler) decline(w http.ResponseWriter, r *http.Request, userID string) {
+func (h *Handler) decline(w http.ResponseWriter, r *http.Request, userID string) {
 	var requestID pgtype.UUID
 	if err := requestID.Scan(r.PathValue("requestID")); err != nil || !requestID.Valid {
 		http.Error(w, "invalid contact request ID", http.StatusBadRequest)
@@ -140,7 +141,7 @@ func (h *contactsHandler) decline(w http.ResponseWriter, r *http.Request, userID
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *contactsHandler) writeError(w http.ResponseWriter, err error) {
+func (h *Handler) writeError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrUserNotFound), errors.Is(err, ErrRequestNotFound):
 		http.Error(w, err.Error(), http.StatusNotFound)

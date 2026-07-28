@@ -1,4 +1,4 @@
-package api_test
+package conversations_test
 
 import (
 	"context"
@@ -9,14 +9,15 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/vradovic/aether/backend/internal/api"
+	"github.com/vradovic/aether/backend/internal/api/apitest"
+	"github.com/vradovic/aether/backend/internal/api/conversations"
 	"github.com/vradovic/aether/backend/internal/core"
 )
 
 func TestConversationsService(t *testing.T) {
 	ctx := context.Background()
-	pool, queries := startDatabase(t, ctx)
-	service := api.NewConversationsService(queries, slog.New(slog.DiscardHandler))
+	pool, queries := apitest.StartDatabase(t, ctx)
+	service := conversations.NewService(queries, slog.New(slog.DiscardHandler))
 
 	ownerID := createContactsTestUser(t, ctx, pool, "conversation_owner")
 	contactID := createContactsTestUser(t, ctx, pool, "conversation_contact")
@@ -66,14 +67,14 @@ func TestConversationsService(t *testing.T) {
 			t.Fatalf("updated name = %q, want Project chat", updated.Name)
 		}
 
-		if _, err := service.UpdateConversation(ctx, "Nope", contactID.String(), conversation.ID); !errors.Is(err, api.ErrConversationNotFound) {
-			t.Fatalf("non-owner update error = %v, want %v", err, api.ErrConversationNotFound)
+		if _, err := service.UpdateConversation(ctx, "Nope", contactID.String(), conversation.ID); !errors.Is(err, conversations.ErrConversationNotFound) {
+			t.Fatalf("non-owner update error = %v, want %v", err, conversations.ErrConversationNotFound)
 		}
-		if _, err := service.UpdateConversation(ctx, " ", ownerID.String(), conversation.ID); !errors.Is(err, api.ErrInvalidConversationName) {
-			t.Fatalf("blank-name update error = %v, want %v", err, api.ErrInvalidConversationName)
+		if _, err := service.UpdateConversation(ctx, " ", ownerID.String(), conversation.ID); !errors.Is(err, conversations.ErrInvalidConversationName) {
+			t.Fatalf("blank-name update error = %v, want %v", err, conversations.ErrInvalidConversationName)
 		}
-		if _, err := service.UpdateConversation(ctx, strings.Repeat("x", 51), ownerID.String(), conversation.ID); !errors.Is(err, api.ErrInvalidConversationName) {
-			t.Fatalf("long-name update error = %v, want %v", err, api.ErrInvalidConversationName)
+		if _, err := service.UpdateConversation(ctx, strings.Repeat("x", 51), ownerID.String(), conversation.ID); !errors.Is(err, conversations.ErrInvalidConversationName) {
+			t.Fatalf("long-name update error = %v, want %v", err, conversations.ErrInvalidConversationName)
 		}
 	})
 
@@ -86,14 +87,14 @@ func TestConversationsService(t *testing.T) {
 			t.Fatalf("AddParticipant() = %+v", participant)
 		}
 
-		if _, err := service.AddParticipant(ctx, ownerID.String(), conversation.ID, contactID.String()); !errors.Is(err, api.ErrParticipantExists) {
-			t.Fatalf("duplicate AddParticipant() error = %v, want %v", err, api.ErrParticipantExists)
+		if _, err := service.AddParticipant(ctx, ownerID.String(), conversation.ID, contactID.String()); !errors.Is(err, conversations.ErrParticipantExists) {
+			t.Fatalf("duplicate AddParticipant() error = %v, want %v", err, conversations.ErrParticipantExists)
 		}
-		if _, err := service.AddParticipant(ctx, ownerID.String(), conversation.ID, nonContactID.String()); !errors.Is(err, api.ErrParticipantNotContact) {
-			t.Fatalf("non-contact AddParticipant() error = %v, want %v", err, api.ErrParticipantNotContact)
+		if _, err := service.AddParticipant(ctx, ownerID.String(), conversation.ID, nonContactID.String()); !errors.Is(err, conversations.ErrParticipantNotContact) {
+			t.Fatalf("non-contact AddParticipant() error = %v, want %v", err, conversations.ErrParticipantNotContact)
 		}
-		if _, err := service.AddParticipant(ctx, contactID.String(), conversation.ID, nonContactID.String()); !errors.Is(err, api.ErrConversationNotFound) {
-			t.Fatalf("non-owner AddParticipant() error = %v, want %v", err, api.ErrConversationNotFound)
+		if _, err := service.AddParticipant(ctx, contactID.String(), conversation.ID, nonContactID.String()); !errors.Is(err, conversations.ErrConversationNotFound) {
+			t.Fatalf("non-owner AddParticipant() error = %v, want %v", err, conversations.ErrConversationNotFound)
 		}
 	})
 
@@ -137,39 +138,39 @@ func TestConversationsService(t *testing.T) {
 			t.Fatalf("message mapping is incomplete: %+v", messages[0])
 		}
 
-		if _, err := service.GetMessages(ctx, nonContactID.String(), conversation.ID, 0); !errors.Is(err, api.ErrConversationNotFound) {
-			t.Fatalf("outsider GetMessages() error = %v, want %v", err, api.ErrConversationNotFound)
+		if _, err := service.GetMessages(ctx, nonContactID.String(), conversation.ID, 0); !errors.Is(err, conversations.ErrConversationNotFound) {
+			t.Fatalf("outsider GetMessages() error = %v, want %v", err, conversations.ErrConversationNotFound)
 		}
-		if _, err := service.GetMessages(ctx, ownerID.String(), conversation.ID, -1); !errors.Is(err, api.ErrInvalidAfterSequence) {
-			t.Fatalf("negative sequence error = %v, want %v", err, api.ErrInvalidAfterSequence)
+		if _, err := service.GetMessages(ctx, ownerID.String(), conversation.ID, -1); !errors.Is(err, conversations.ErrInvalidAfterSequence) {
+			t.Fatalf("negative sequence error = %v, want %v", err, conversations.ErrInvalidAfterSequence)
 		}
 	})
 
 	t.Run("only the owner can remove non-owner participants", func(t *testing.T) {
-		if err := service.RemoveParticipant(ctx, contactID.String(), conversation.ID, ownerID.String()); !errors.Is(err, api.ErrParticipantNotFound) {
-			t.Fatalf("non-owner RemoveParticipant() error = %v, want %v", err, api.ErrParticipantNotFound)
+		if err := service.RemoveParticipant(ctx, contactID.String(), conversation.ID, ownerID.String()); !errors.Is(err, conversations.ErrParticipantNotFound) {
+			t.Fatalf("non-owner RemoveParticipant() error = %v, want %v", err, conversations.ErrParticipantNotFound)
 		}
-		if err := service.RemoveParticipant(ctx, ownerID.String(), conversation.ID, ownerID.String()); !errors.Is(err, api.ErrParticipantNotFound) {
-			t.Fatalf("remove creator error = %v, want %v", err, api.ErrParticipantNotFound)
+		if err := service.RemoveParticipant(ctx, ownerID.String(), conversation.ID, ownerID.String()); !errors.Is(err, conversations.ErrParticipantNotFound) {
+			t.Fatalf("remove creator error = %v, want %v", err, conversations.ErrParticipantNotFound)
 		}
 		if err := service.RemoveParticipant(ctx, ownerID.String(), conversation.ID, contactID.String()); err != nil {
 			t.Fatalf("RemoveParticipant() error = %v", err)
 		}
-		if _, err := service.GetMessages(ctx, contactID.String(), conversation.ID, 0); !errors.Is(err, api.ErrConversationNotFound) {
-			t.Fatalf("removed participant GetMessages() error = %v, want %v", err, api.ErrConversationNotFound)
+		if _, err := service.GetMessages(ctx, contactID.String(), conversation.ID, 0); !errors.Is(err, conversations.ErrConversationNotFound) {
+			t.Fatalf("removed participant GetMessages() error = %v, want %v", err, conversations.ErrConversationNotFound)
 		}
 	})
 
 	t.Run("only the owner can delete and deletion cascades", func(t *testing.T) {
-		if err := service.DeleteConversation(ctx, contactID.String(), conversation.ID); !errors.Is(err, api.ErrConversationNotFound) {
-			t.Fatalf("non-owner DeleteConversation() error = %v, want %v", err, api.ErrConversationNotFound)
+		if err := service.DeleteConversation(ctx, contactID.String(), conversation.ID); !errors.Is(err, conversations.ErrConversationNotFound) {
+			t.Fatalf("non-owner DeleteConversation() error = %v, want %v", err, conversations.ErrConversationNotFound)
 		}
 		if err := service.DeleteConversation(ctx, ownerID.String(), conversation.ID); err != nil {
 			t.Fatalf("DeleteConversation() error = %v", err)
 		}
 
-		var conversations, participants, messages int
-		if err := pool.QueryRow(ctx, "SELECT count(*) FROM conversations WHERE id = $1", conversation.ID).Scan(&conversations); err != nil {
+		var conversationsCount, participants, messages int
+		if err := pool.QueryRow(ctx, "SELECT count(*) FROM conversations WHERE id = $1", conversation.ID).Scan(&conversationsCount); err != nil {
 			t.Fatalf("count deleted conversation: %v", err)
 		}
 		if err := pool.QueryRow(ctx, "SELECT count(*) FROM conversation_participants WHERE conversation_id = $1", conversation.ID).Scan(&participants); err != nil {
@@ -178,11 +179,11 @@ func TestConversationsService(t *testing.T) {
 		if err := pool.QueryRow(ctx, "SELECT count(*) FROM messages WHERE conversation_id = $1", conversation.ID).Scan(&messages); err != nil {
 			t.Fatalf("count deleted messages: %v", err)
 		}
-		if conversations != 0 || participants != 0 || messages != 0 {
-			t.Fatalf("delete counts = conversations:%d participants:%d messages:%d, want all zero", conversations, participants, messages)
+		if conversationsCount != 0 || participants != 0 || messages != 0 {
+			t.Fatalf("delete counts = conversations:%d participants:%d messages:%d, want all zero", conversationsCount, participants, messages)
 		}
-		if err := service.DeleteConversation(ctx, ownerID.String(), conversation.ID); !errors.Is(err, api.ErrConversationNotFound) {
-			t.Fatalf("repeated DeleteConversation() error = %v, want %v", err, api.ErrConversationNotFound)
+		if err := service.DeleteConversation(ctx, ownerID.String(), conversation.ID); !errors.Is(err, conversations.ErrConversationNotFound) {
+			t.Fatalf("repeated DeleteConversation() error = %v, want %v", err, conversations.ErrConversationNotFound)
 		}
 	})
 
@@ -190,13 +191,27 @@ func TestConversationsService(t *testing.T) {
 		if _, err := service.CreateConversation(ctx, "Name", "invalid"); !errors.Is(err, core.ErrInvalidID) {
 			t.Fatalf("invalid creator error = %v, want %v", err, core.ErrInvalidID)
 		}
-		if _, err := service.GetMessages(ctx, ownerID.String(), "invalid", 0); !errors.Is(err, api.ErrInvalidConversationID) {
-			t.Fatalf("invalid conversation error = %v, want %v", err, api.ErrInvalidConversationID)
+		if _, err := service.GetMessages(ctx, ownerID.String(), "invalid", 0); !errors.Is(err, conversations.ErrInvalidConversationID) {
+			t.Fatalf("invalid conversation error = %v, want %v", err, conversations.ErrInvalidConversationID)
 		}
 		if _, err := service.GetConversations(ctx, "invalid"); !errors.Is(err, core.ErrInvalidID) {
 			t.Fatalf("invalid user error = %v, want %v", err, core.ErrInvalidID)
 		}
 	})
+}
+
+func createContactsTestUser(t *testing.T, ctx context.Context, pool *pgxpool.Pool, username string) pgtype.UUID {
+	t.Helper()
+
+	var id pgtype.UUID
+	err := pool.QueryRow(ctx, `
+		INSERT INTO users (email, username, password_hash, first_name, last_name)
+		VALUES ($1, $2, 'unused-password-hash', 'Test', 'User')
+		RETURNING id`, username+"@example.com", username).Scan(&id)
+	if err != nil {
+		t.Fatalf("create test user %q: %v", username, err)
+	}
+	return id
 }
 
 func insertConversationTestContact(t *testing.T, ctx context.Context, pool *pgxpool.Pool, user1ID, user2ID pgtype.UUID) {
@@ -222,8 +237,8 @@ func seedConversationTestMessages(t *testing.T, ctx context.Context, pool *pgxpo
 	}
 }
 
-func containsConversation(conversations []api.Conversation, id, name string) bool {
-	for _, conversation := range conversations {
+func containsConversation(convs []conversations.Conversation, id, name string) bool {
+	for _, conversation := range convs {
 		if conversation.ID == id && conversation.Name == name {
 			return true
 		}

@@ -1,4 +1,4 @@
-package api_test
+package conversations_test
 
 import (
 	"context"
@@ -7,55 +7,59 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/vradovic/aether/backend/internal/api"
+	"github.com/vradovic/aether/backend/internal/api/apitest"
+	"github.com/vradovic/aether/backend/internal/api/conversations"
 	"github.com/vradovic/aether/backend/internal/core"
 )
 
 const testConversationID = "d56ba3a9-d89e-4474-aefa-6247d34b01f9"
 const testParticipantID = "b0a782cf-b3d4-4ed1-ab01-b36022c1480a"
+const testUserID = "550e8400-e29b-41d4-a716-446655440000"
 
 type fakeConversationsService struct {
-	conversations []api.Conversation
-	messages      []api.Message
-	conversation  api.Conversation
-	participant   api.ConversationParticipant
+	conversations []conversations.Conversation
+	messages      []conversations.Message
+	conversation  conversations.Conversation
+	participant   conversations.ConversationParticipant
 	err           error
-	getFn         func(context.Context, string) ([]api.Conversation, error)
-	updateFn      func(context.Context, string, string, string) (api.Conversation, error)
-	messagesFn    func(context.Context, string, string, int64) ([]api.Message, error)
-	addFn         func(context.Context, string, string, string) (api.ConversationParticipant, error)
+	getFn         func(context.Context, string) ([]conversations.Conversation, error)
+	updateFn      func(context.Context, string, string, string) (conversations.Conversation, error)
+	messagesFn    func(context.Context, string, string, int64) ([]conversations.Message, error)
+	addFn         func(context.Context, string, string, string) (conversations.ConversationParticipant, error)
 	deleteFn      func(context.Context, string, string) error
 	removeFn      func(context.Context, string, string, string) error
 }
 
-func (f fakeConversationsService) GetConversations(ctx context.Context, userID string) ([]api.Conversation, error) {
+func (f fakeConversationsService) GetConversations(ctx context.Context, userID string) ([]conversations.Conversation, error) {
 	if f.getFn != nil {
 		return f.getFn(ctx, userID)
 	}
 	return f.conversations, f.err
 }
 
-func (f fakeConversationsService) CreateConversation(context.Context, string, string) (api.Conversation, error) {
+func (f fakeConversationsService) CreateConversation(context.Context, string, string) (conversations.Conversation, error) {
 	return f.conversation, f.err
 }
 
-func (f fakeConversationsService) UpdateConversation(ctx context.Context, name, userID, conversationID string) (api.Conversation, error) {
+func (f fakeConversationsService) UpdateConversation(ctx context.Context, name, userID, conversationID string) (conversations.Conversation, error) {
 	if f.updateFn != nil {
 		return f.updateFn(ctx, name, userID, conversationID)
 	}
 	return f.conversation, f.err
 }
 
-func (f fakeConversationsService) GetMessages(ctx context.Context, userID, conversationID string, afterSequence int64) ([]api.Message, error) {
+func (f fakeConversationsService) GetMessages(ctx context.Context, userID, conversationID string, afterSequence int64) ([]conversations.Message, error) {
 	if f.messagesFn != nil {
 		return f.messagesFn(ctx, userID, conversationID, afterSequence)
 	}
 	return f.messages, f.err
 }
 
-func (f fakeConversationsService) AddParticipant(ctx context.Context, userID, conversationID, participantID string) (api.ConversationParticipant, error) {
+func (f fakeConversationsService) AddParticipant(ctx context.Context, userID, conversationID, participantID string) (conversations.ConversationParticipant, error) {
 	if f.addFn != nil {
 		return f.addFn(ctx, userID, conversationID, participantID)
 	}
@@ -78,20 +82,33 @@ func (f fakeConversationsService) RemoveParticipant(ctx context.Context, userID,
 
 func newConversationsMux(service fakeConversationsService) *http.ServeMux {
 	logger := slog.New(slog.DiscardHandler)
-	handler := api.NewConversationsHandler(service, logger)
-	middleware := api.Middleware{SigningKey: testSigningKey}
+	handler := conversations.NewHandler(service, logger)
+	middleware := api.Middleware{SigningKey: apitest.TestSigningKey}
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux, middleware)
 	return mux
 }
 
+func authenticatedRequest(t *testing.T, method, target, body string) *http.Request {
+	t.Helper()
+
+	token, err := core.IssueToken(apitest.TestSigningKey, testUserID)
+	if err != nil {
+		t.Fatalf("failed to issue access token: %v", err)
+	}
+
+	request := httptest.NewRequest(method, target, strings.NewReader(body))
+	request.Header.Set("Authorization", "Bearer "+token)
+	return request
+}
+
 func TestGetConversations(t *testing.T) {
 	t.Run("should return conversations", func(t *testing.T) {
-		mux := newConversationsMux(fakeConversationsService{getFn: func(_ context.Context, userID string) ([]api.Conversation, error) {
+		mux := newConversationsMux(fakeConversationsService{getFn: func(_ context.Context, userID string) ([]conversations.Conversation, error) {
 			if userID != testUserID {
 				t.Fatalf("user ID = %q, want %q", userID, testUserID)
 			}
-			return []api.Conversation{{
+			return []conversations.Conversation{{
 				ID:                  testConversationID,
 				Name:                "General",
 				CreatedBy:           testUserID,
@@ -107,7 +124,7 @@ func TestGetConversations(t *testing.T) {
 			t.Fatalf("expected status %d, got %d, body: %s", http.StatusOK, response.Code, response.Body.String())
 		}
 
-		var body []api.Conversation
+		var body []conversations.Conversation
 		if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 			t.Fatalf("expected JSON response, got %s", response.Body.String())
 		}
@@ -129,7 +146,7 @@ func TestGetConversations(t *testing.T) {
 	})
 
 	t.Run("should reject invalid user ID", func(t *testing.T) {
-		token, err := core.IssueToken(testSigningKey, "not-a-uuid")
+		token, err := core.IssueToken(apitest.TestSigningKey, "not-a-uuid")
 		if err != nil {
 			t.Fatalf("failed to issue access token: %v", err)
 		}
@@ -195,11 +212,11 @@ func TestCreateConversation(t *testing.T) {
 func TestUpdateConversation(t *testing.T) {
 	t.Run("updates the name", func(t *testing.T) {
 		service := fakeConversationsService{
-			updateFn: func(_ context.Context, name, userID, conversationID string) (api.Conversation, error) {
+			updateFn: func(_ context.Context, name, userID, conversationID string) (conversations.Conversation, error) {
 				if name != "Project chat" || userID != testUserID || conversationID != testConversationID {
 					t.Fatalf("unexpected update arguments: name=%q userID=%q conversationID=%q", name, userID, conversationID)
 				}
-				return api.Conversation{ID: conversationID, Name: name, CreatedBy: userID}, nil
+				return conversations.Conversation{ID: conversationID, Name: name, CreatedBy: userID}, nil
 			},
 		}
 		response := serveConversationRequest(t, service, http.MethodPatch, "/conversations/"+testConversationID, `{"name":"Project chat"}`)
@@ -207,7 +224,7 @@ func TestUpdateConversation(t *testing.T) {
 		if response.Code != http.StatusOK {
 			t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
 		}
-		var conversation api.Conversation
+		var conversation conversations.Conversation
 		if err := json.Unmarshal(response.Body.Bytes(), &conversation); err != nil {
 			t.Fatalf("decode response: %v", err)
 		}
@@ -223,10 +240,10 @@ func TestUpdateConversation(t *testing.T) {
 		err        error
 		wantStatus int
 	}{
-		{name: "invalid conversation ID", path: "/conversations/not-a-uuid", body: `{"name":"Name"}`, err: api.ErrInvalidConversationID, wantStatus: http.StatusBadRequest},
+		{name: "invalid conversation ID", path: "/conversations/not-a-uuid", body: `{"name":"Name"}`, err: conversations.ErrInvalidConversationID, wantStatus: http.StatusBadRequest},
 		{name: "invalid body", path: "/conversations/" + testConversationID, body: `{"unknown":true}`, wantStatus: http.StatusBadRequest},
-		{name: "invalid name", path: "/conversations/" + testConversationID, body: `{"name":""}`, err: api.ErrInvalidConversationName, wantStatus: http.StatusBadRequest},
-		{name: "not found", path: "/conversations/" + testConversationID, body: `{"name":"Name"}`, err: api.ErrConversationNotFound, wantStatus: http.StatusNotFound},
+		{name: "invalid name", path: "/conversations/" + testConversationID, body: `{"name":""}`, err: conversations.ErrInvalidConversationName, wantStatus: http.StatusBadRequest},
+		{name: "not found", path: "/conversations/" + testConversationID, body: `{"name":"Name"}`, err: conversations.ErrConversationNotFound, wantStatus: http.StatusNotFound},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			response := serveConversationRequest(t, fakeConversationsService{err: tt.err}, http.MethodPatch, tt.path, tt.body)
@@ -240,11 +257,11 @@ func TestUpdateConversation(t *testing.T) {
 func TestGetConversationMessages(t *testing.T) {
 	t.Run("passes after_sequence and returns messages", func(t *testing.T) {
 		service := fakeConversationsService{
-			messagesFn: func(_ context.Context, userID, conversationID string, afterSequence int64) ([]api.Message, error) {
+			messagesFn: func(_ context.Context, userID, conversationID string, afterSequence int64) ([]conversations.Message, error) {
 				if userID != testUserID || conversationID != testConversationID || afterSequence != 7 {
 					t.Fatalf("unexpected message arguments: userID=%q conversationID=%q after=%d", userID, conversationID, afterSequence)
 				}
-				return []api.Message{{ID: testParticipantID, ConversationID: conversationID, MessageSequence: 8, Body: "hello"}}, nil
+				return []conversations.Message{{ID: testParticipantID, ConversationID: conversationID, MessageSequence: 8, Body: "hello"}}, nil
 			},
 		}
 		response := serveConversationRequest(t, service, http.MethodGet, "/conversations/"+testConversationID+"/messages?after_sequence=7", "")
@@ -252,7 +269,7 @@ func TestGetConversationMessages(t *testing.T) {
 		if response.Code != http.StatusOK {
 			t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
 		}
-		var messages []api.Message
+		var messages []conversations.Message
 		if err := json.Unmarshal(response.Body.Bytes(), &messages); err != nil {
 			t.Fatalf("decode response: %v", err)
 		}
@@ -274,11 +291,11 @@ func TestGetConversationMessages(t *testing.T) {
 func TestAddConversationParticipant(t *testing.T) {
 	t.Run("adds a participant", func(t *testing.T) {
 		service := fakeConversationsService{
-			addFn: func(_ context.Context, userID, conversationID, participantID string) (api.ConversationParticipant, error) {
+			addFn: func(_ context.Context, userID, conversationID, participantID string) (conversations.ConversationParticipant, error) {
 				if userID != testUserID || conversationID != testConversationID || participantID != testParticipantID {
 					t.Fatalf("unexpected add arguments: userID=%q conversationID=%q participantID=%q", userID, conversationID, participantID)
 				}
-				return api.ConversationParticipant{ConversationID: conversationID, UserID: participantID}, nil
+				return conversations.ConversationParticipant{ConversationID: conversationID, UserID: participantID}, nil
 			},
 		}
 		response := serveConversationRequest(t, service, http.MethodPost, "/conversations/"+testConversationID+"/participants", `{"userId":"`+testParticipantID+`"}`)
@@ -286,7 +303,7 @@ func TestAddConversationParticipant(t *testing.T) {
 		if response.Code != http.StatusCreated {
 			t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusCreated, response.Body.String())
 		}
-		var participant api.ConversationParticipant
+		var participant conversations.ConversationParticipant
 		if err := json.Unmarshal(response.Body.Bytes(), &participant); err != nil {
 			t.Fatalf("decode response: %v", err)
 		}
@@ -301,9 +318,9 @@ func TestAddConversationParticipant(t *testing.T) {
 		err        error
 		wantStatus int
 	}{
-		{name: "invalid participant ID", body: `{"userId":"invalid"}`, err: api.ErrInvalidParticipantID, wantStatus: http.StatusBadRequest},
-		{name: "not a contact", body: `{"userId":"` + testParticipantID + `"}`, err: api.ErrParticipantNotContact, wantStatus: http.StatusForbidden},
-		{name: "already present", body: `{"userId":"` + testParticipantID + `"}`, err: api.ErrParticipantExists, wantStatus: http.StatusConflict},
+		{name: "invalid participant ID", body: `{"userId":"invalid"}`, err: conversations.ErrInvalidParticipantID, wantStatus: http.StatusBadRequest},
+		{name: "not a contact", body: `{"userId":"` + testParticipantID + `"}`, err: conversations.ErrParticipantNotContact, wantStatus: http.StatusForbidden},
+		{name: "already present", body: `{"userId":"` + testParticipantID + `"}`, err: conversations.ErrParticipantExists, wantStatus: http.StatusConflict},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			response := serveConversationRequest(t, fakeConversationsService{err: tt.err}, http.MethodPost, "/conversations/"+testConversationID+"/participants", tt.body)
@@ -331,7 +348,7 @@ func TestDeleteConversationAndParticipant(t *testing.T) {
 		})
 	}
 
-	response := serveConversationRequest(t, fakeConversationsService{err: api.ErrParticipantNotFound}, http.MethodDelete, "/conversations/"+testConversationID+"/participants/"+testParticipantID, "")
+	response := serveConversationRequest(t, fakeConversationsService{err: conversations.ErrParticipantNotFound}, http.MethodDelete, "/conversations/"+testConversationID+"/participants/"+testParticipantID, "")
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusNotFound, response.Body.String())
 	}

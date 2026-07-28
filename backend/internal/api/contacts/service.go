@@ -1,4 +1,4 @@
-package api
+package contacts
 
 import (
 	"context"
@@ -19,16 +19,16 @@ var ErrSelfRequest = errors.New("cannot send a contact request to yourself")
 var ErrPendingRequestExists = errors.New("a pending contact request already exists")
 var ErrRequestNotFound = errors.New("contact request not found")
 
-type contactsService struct {
+type Service struct {
 	queries *db.Queries
 	pool    *pgxpool.Pool
 }
 
-func NewContactsService(queries *db.Queries, pool *pgxpool.Pool) *contactsService {
-	return &contactsService{queries: queries, pool: pool}
+func NewService(queries *db.Queries, pool *pgxpool.Pool) *Service {
+	return &Service{queries: queries, pool: pool}
 }
 
-func (s *contactsService) Send(ctx context.Context, userID, username string) (pgtype.UUID, error) {
+func (s *Service) Send(ctx context.Context, userID, username string) (pgtype.UUID, error) {
 	senderID, err := core.ParseUUID(userID)
 	if err != nil {
 		return pgtype.UUID{}, err
@@ -56,7 +56,7 @@ func (s *contactsService) Send(ctx context.Context, userID, username string) (pg
 	return request.ID, nil
 }
 
-func (s *contactsService) GetPendingContactRequests(ctx context.Context, userID string) ([]db.ContactRequest, error) {
+func (s *Service) GetPendingContactRequests(ctx context.Context, userID string) ([]db.ContactRequest, error) {
 	recipientID, err := core.ParseUUID(userID)
 	if err != nil {
 		return nil, err
@@ -69,7 +69,7 @@ func (s *contactsService) GetPendingContactRequests(ctx context.Context, userID 
 	return requests, nil
 }
 
-func (s *contactsService) Cancel(ctx context.Context, userID string, requestID pgtype.UUID) error {
+func (s *Service) Cancel(ctx context.Context, userID string, requestID pgtype.UUID) error {
 	senderID, err := core.ParseUUID(userID)
 	if err != nil {
 		return err
@@ -82,7 +82,7 @@ func (s *contactsService) Cancel(ctx context.Context, userID string, requestID p
 	return nil
 }
 
-func (s *contactsService) Accept(ctx context.Context, userID string, requestID pgtype.UUID) error {
+func (s *Service) Accept(ctx context.Context, userID string, requestID pgtype.UUID) error {
 	recipientID, err := core.ParseUUID(userID)
 	if err != nil {
 		return err
@@ -111,7 +111,7 @@ func (s *contactsService) Accept(ctx context.Context, userID string, requestID p
 	return nil
 }
 
-func (s *contactsService) Decline(ctx context.Context, userID string, requestID pgtype.UUID) error {
+func (s *Service) Decline(ctx context.Context, userID string, requestID pgtype.UUID) error {
 	recipientID, err := core.ParseUUID(userID)
 	if err != nil {
 		return err

@@ -1,4 +1,4 @@
-package api
+package httputil
 
 import (
 	"encoding/json"
@@ -8,15 +8,15 @@ import (
 	"net/http"
 )
 
-func httpInternalServerError(w http.ResponseWriter) {
+func InternalServerError(w http.ResponseWriter) {
 	http.Error(w, "Unexpected error occurred.", http.StatusInternalServerError)
 }
 
-func httpUnauthorized(w http.ResponseWriter) {
+func Unauthorized(w http.ResponseWriter) {
 	http.Error(w, "User is unauthorized", http.StatusUnauthorized)
 }
 
-func decodeJSONBody(w http.ResponseWriter, r *http.Request, target any) error {
+func DecodeJSON(w http.ResponseWriter, r *http.Request, target any) error {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
@@ -32,10 +32,11 @@ func decodeJSONBody(w http.ResponseWriter, r *http.Request, target any) error {
 	return nil
 }
 
-func writeJSONResponse(w http.ResponseWriter, status int, v any, logger *slog.Logger) {
+func WriteJSON(w http.ResponseWriter, status int, v any, logger *slog.Logger) {
 	data, err := json.Marshal(v)
 	if err != nil {
-		httpInternalServerError(w)
+		InternalServerError(w)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")

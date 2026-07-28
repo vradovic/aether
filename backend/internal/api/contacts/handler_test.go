@@ -1,4 +1,4 @@
-package api_test
+package contacts_test
 
 import (
 	"context"
@@ -12,6 +12,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/vradovic/aether/backend/internal/api"
+	"github.com/vradovic/aether/backend/internal/api/apitest"
+	"github.com/vradovic/aether/backend/internal/api/contacts"
 	"github.com/vradovic/aether/backend/internal/core"
 	"github.com/vradovic/aether/backend/internal/db"
 )
@@ -54,8 +56,8 @@ func (f fakeContactsService) Decline(context.Context, string, pgtype.UUID) error
 
 func newContactsMux(service fakeContactsService) *http.ServeMux {
 	logger := slog.New(slog.DiscardHandler)
-	handler := api.NewContactsHandler(service, logger)
-	middleware := api.Middleware{SigningKey: testSigningKey}
+	handler := contacts.NewHandler(service, logger)
+	middleware := api.Middleware{SigningKey: apitest.TestSigningKey}
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux, middleware)
 	return mux
@@ -64,7 +66,7 @@ func newContactsMux(service fakeContactsService) *http.ServeMux {
 func authenticatedRequest(t *testing.T, method, target, body string) *http.Request {
 	t.Helper()
 
-	token, err := core.IssueToken(testSigningKey, testUserID)
+	token, err := core.IssueToken(apitest.TestSigningKey, testUserID)
 	if err != nil {
 		t.Fatalf("failed to issue access token: %v", err)
 	}
@@ -121,7 +123,7 @@ func TestSendContactRequest(t *testing.T) {
 	})
 
 	t.Run("should return not found", func(t *testing.T) {
-		mux := newContactsMux(fakeContactsService{sendErr: api.ErrUserNotFound})
+		mux := newContactsMux(fakeContactsService{sendErr: contacts.ErrUserNotFound})
 		request := authenticatedRequest(t, http.MethodPost, "/contact-requests", `{"username":"missing"}`)
 		response := httptest.NewRecorder()
 
@@ -210,9 +212,9 @@ func TestUpdateContactRequest(t *testing.T) {
 		action  string
 		service fakeContactsService
 	}{
-		{action: "cancel", service: fakeContactsService{cancelErr: api.ErrRequestNotFound}},
-		{action: "accept", service: fakeContactsService{acceptErr: api.ErrRequestNotFound}},
-		{action: "decline", service: fakeContactsService{declineErr: api.ErrRequestNotFound}},
+		{action: "cancel", service: fakeContactsService{cancelErr: contacts.ErrRequestNotFound}},
+		{action: "accept", service: fakeContactsService{acceptErr: contacts.ErrRequestNotFound}},
+		{action: "decline", service: fakeContactsService{declineErr: contacts.ErrRequestNotFound}},
 	} {
 		t.Run(test.action+" should return not found", func(t *testing.T) {
 			mux := newContactsMux(test.service)

@@ -1,4 +1,4 @@
-package api
+package conversations
 
 import (
 	"context"
@@ -8,10 +8,12 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/vradovic/aether/backend/internal/api"
+	"github.com/vradovic/aether/backend/internal/api/httputil"
 	"github.com/vradovic/aether/backend/internal/core"
 )
 
-type ConversationsService interface {
+type ServiceInterface interface {
 	GetConversations(context.Context, string) ([]Conversation, error)
 	CreateConversation(context.Context, string, string) (Conversation, error)
 	UpdateConversation(context.Context, string, string, string) (Conversation, error)
@@ -21,16 +23,16 @@ type ConversationsService interface {
 	RemoveParticipant(context.Context, string, string, string) error
 }
 
-type conversationsHandler struct {
-	svc    ConversationsService
+type Handler struct {
+	svc    ServiceInterface
 	logger *slog.Logger
 }
 
-func NewConversationsHandler(svc ConversationsService, logger *slog.Logger) *conversationsHandler {
-	return &conversationsHandler{svc: svc, logger: logger}
+func NewHandler(svc ServiceInterface, logger *slog.Logger) *Handler {
+	return &Handler{svc: svc, logger: logger}
 }
 
-func (h *conversationsHandler) RegisterRoutes(mux *http.ServeMux, m Middleware) {
+func (h *Handler) RegisterRoutes(mux *http.ServeMux, m api.Middleware) {
 	mux.Handle("GET /conversations", m.RequireAuth(h.getConversations))
 	mux.Handle("POST /conversations", m.RequireAuth(h.CreateConversation))
 	mux.Handle("PATCH /conversations/{conversationID}", m.RequireAuth(h.updateConversation))
@@ -40,27 +42,27 @@ func (h *conversationsHandler) RegisterRoutes(mux *http.ServeMux, m Middleware) 
 	mux.Handle("DELETE /conversations/{conversationID}/participants/{participantID}", m.RequireAuth(h.removeParticipant))
 }
 
-func (h *conversationsHandler) getConversations(w http.ResponseWriter, r *http.Request, userID string) {
+func (h *Handler) getConversations(w http.ResponseWriter, r *http.Request, userID string) {
 	conversations, err := h.svc.GetConversations(r.Context(), userID)
 	if err != nil {
 		if errors.Is(err, core.ErrInvalidID) {
-			httpUnauthorized(w)
+			httputil.Unauthorized(w)
 			return
 		}
 		h.logger.Error("failed to get conversations", "error", err)
-		httpInternalServerError(w)
+		httputil.InternalServerError(w)
 		return
 	}
-	writeJSONResponse(w, http.StatusOK, conversations, h.logger)
+	httputil.WriteJSON(w, http.StatusOK, conversations, h.logger)
 }
 
 type CreateConversationRequestBody struct {
 	Name string `json:"name"`
 }
 
-func (h *conversationsHandler) CreateConversation(w http.ResponseWriter, r *http.Request, userID string) {
+func (h *Handler) CreateConversation(w http.ResponseWriter, r *http.Request, userID string) {
 	var body CreateConversationRequestBody
-	err := decodeJSONBody(w, r, &body)
+	err := httputil.DecodeJSON(w, r, &body)
 	if err != nil && !errors.Is(err, io.EOF) {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
@@ -72,23 +74,23 @@ func (h *conversationsHandler) CreateConversation(w http.ResponseWriter, r *http
 		case errors.Is(err, ErrInvalidConversationName):
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		case errors.Is(err, core.ErrInvalidID):
-			httpUnauthorized(w)
+			httputil.Unauthorized(w)
 		default:
 			h.logger.Error("failed to create conversation", "error", err)
-			httpInternalServerError(w)
+			httputil.InternalServerError(w)
 		}
 		return
 	}
-	writeJSONResponse(w, http.StatusCreated, conversation, h.logger)
+	httputil.WriteJSON(w, http.StatusCreated, conversation, h.logger)
 }
 
 type updateConversationRequest struct {
 	Name string `json:"name"`
 }
 
-func (h *conversationsHandler) updateConversation(w http.ResponseWriter, r *http.Request, userID string) {
+func (h *Handler) updateConversation(w http.ResponseWriter, r *http.Request, userID string) {
 	var body updateConversationRequest
-	if err := decodeJSONBody(w, r, &body); err != nil {
+	if err := httputil.DecodeJSON(w, r, &body); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
@@ -99,19 +101,19 @@ func (h *conversationsHandler) updateConversation(w http.ResponseWriter, r *http
 		case errors.Is(err, ErrInvalidConversationName), errors.Is(err, ErrInvalidConversationID):
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		case errors.Is(err, core.ErrInvalidID):
-			httpUnauthorized(w)
+			httputil.Unauthorized(w)
 		case errors.Is(err, ErrConversationNotFound):
 			http.Error(w, err.Error(), http.StatusNotFound)
 		default:
 			h.logger.Error("failed to update conversation", "error", err)
-			httpInternalServerError(w)
+			httputil.InternalServerError(w)
 		}
 		return
 	}
-	writeJSONResponse(w, http.StatusOK, conversation, h.logger)
+	httputil.WriteJSON(w, http.StatusOK, conversation, h.logger)
 }
 
-func (h *conversationsHandler) getMessages(w http.ResponseWriter, r *http.Request, userID string) {
+func (h *Handler) getMessages(w http.ResponseWriter, r *http.Request, userID string) {
 	afterSequence := int64(0)
 	values, present := r.URL.Query()["after_sequence"]
 	if present {
@@ -133,25 +135,25 @@ func (h *conversationsHandler) getMessages(w http.ResponseWriter, r *http.Reques
 		case errors.Is(err, ErrInvalidAfterSequence), errors.Is(err, ErrInvalidConversationID):
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		case errors.Is(err, core.ErrInvalidID):
-			httpUnauthorized(w)
+			httputil.Unauthorized(w)
 		case errors.Is(err, ErrConversationNotFound):
 			http.Error(w, err.Error(), http.StatusNotFound)
 		default:
 			h.logger.Error("failed to get conversation messages", "error", err)
-			httpInternalServerError(w)
+			httputil.InternalServerError(w)
 		}
 		return
 	}
-	writeJSONResponse(w, http.StatusOK, messages, h.logger)
+	httputil.WriteJSON(w, http.StatusOK, messages, h.logger)
 }
 
 type addParticipantRequest struct {
 	UserID string `json:"userId"`
 }
 
-func (h *conversationsHandler) addParticipant(w http.ResponseWriter, r *http.Request, userID string) {
+func (h *Handler) addParticipant(w http.ResponseWriter, r *http.Request, userID string) {
 	var body addParticipantRequest
-	if err := decodeJSONBody(w, r, &body); err != nil {
+	if err := httputil.DecodeJSON(w, r, &body); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
@@ -162,7 +164,7 @@ func (h *conversationsHandler) addParticipant(w http.ResponseWriter, r *http.Req
 		case errors.Is(err, ErrInvalidConversationID), errors.Is(err, ErrInvalidParticipantID):
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		case errors.Is(err, core.ErrInvalidID):
-			httpUnauthorized(w)
+			httputil.Unauthorized(w)
 		case errors.Is(err, ErrConversationNotFound):
 			http.Error(w, err.Error(), http.StatusNotFound)
 		case errors.Is(err, ErrParticipantNotContact):
@@ -171,43 +173,43 @@ func (h *conversationsHandler) addParticipant(w http.ResponseWriter, r *http.Req
 			http.Error(w, err.Error(), http.StatusConflict)
 		default:
 			h.logger.Error("failed to add conversation participant", "error", err)
-			httpInternalServerError(w)
+			httputil.InternalServerError(w)
 		}
 		return
 	}
-	writeJSONResponse(w, http.StatusCreated, participant, h.logger)
+	httputil.WriteJSON(w, http.StatusCreated, participant, h.logger)
 }
 
-func (h *conversationsHandler) deleteConversation(w http.ResponseWriter, r *http.Request, userID string) {
+func (h *Handler) deleteConversation(w http.ResponseWriter, r *http.Request, userID string) {
 	if err := h.svc.DeleteConversation(r.Context(), userID, r.PathValue("conversationID")); err != nil {
 		switch {
 		case errors.Is(err, ErrInvalidConversationID):
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		case errors.Is(err, core.ErrInvalidID):
-			httpUnauthorized(w)
+			httputil.Unauthorized(w)
 		case errors.Is(err, ErrConversationNotFound):
 			http.Error(w, err.Error(), http.StatusNotFound)
 		default:
 			h.logger.Error("failed to delete conversation", "error", err)
-			httpInternalServerError(w)
+			httputil.InternalServerError(w)
 		}
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *conversationsHandler) removeParticipant(w http.ResponseWriter, r *http.Request, userID string) {
+func (h *Handler) removeParticipant(w http.ResponseWriter, r *http.Request, userID string) {
 	if err := h.svc.RemoveParticipant(r.Context(), userID, r.PathValue("conversationID"), r.PathValue("participantID")); err != nil {
 		switch {
 		case errors.Is(err, ErrInvalidConversationID), errors.Is(err, ErrInvalidParticipantID):
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		case errors.Is(err, core.ErrInvalidID):
-			httpUnauthorized(w)
+			httputil.Unauthorized(w)
 		case errors.Is(err, ErrParticipantNotFound):
 			http.Error(w, err.Error(), http.StatusNotFound)
 		default:
 			h.logger.Error("failed to remove conversation participant", "error", err)
-			httpInternalServerError(w)
+			httputil.InternalServerError(w)
 		}
 		return
 	}

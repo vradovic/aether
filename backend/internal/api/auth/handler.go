@@ -1,4 +1,4 @@
-package api
+package auth
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+
+	"github.com/vradovic/aether/backend/internal/api"
 )
 
 type RegisterRequest struct {
@@ -27,29 +29,29 @@ type LoginResponse struct {
 	ExpiresIn   int64  `json:"expiresIn"`
 }
 
-type AuthService interface {
+type ServiceInterface interface {
 	Login(ctx context.Context, input LoginInput) (LoginOutput, error)
 	Register(ctx context.Context, input RegisterInput) error
 }
 
-type authHandler struct {
-	svc    AuthService
+type Handler struct {
+	svc    ServiceInterface
 	logger *slog.Logger
 }
 
-func NewAuthHandler(svc AuthService, logger *slog.Logger) *authHandler {
-	return &authHandler{
+func NewHandler(svc ServiceInterface, logger *slog.Logger) *Handler {
+	return &Handler{
 		svc:    svc,
 		logger: logger,
 	}
 }
 
-func (h *authHandler) RegisterRoutes(mux *http.ServeMux) {
+func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /register", h.Register)
 	mux.HandleFunc("POST /login", h.Login)
 }
 
-func (h *authHandler) Login(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MiB
 
 	var request LoginRequest
@@ -63,7 +65,7 @@ func (h *authHandler) Login(w http.ResponseWriter, r *http.Request) {
 		Password: request.Password,
 	})
 	if err != nil {
-		if errors.Is(err, ErrInvalidCredentials) {
+		if errors.Is(err, api.ErrInvalidCredentials) {
 			http.Error(w, "", http.StatusUnauthorized)
 			return
 		}
@@ -82,7 +84,7 @@ func (h *authHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *authHandler) Register(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MiB
 
 	var dto RegisterRequest

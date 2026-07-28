@@ -1,4 +1,4 @@
-package api_test
+package contacts_test
 
 import (
 	"context"
@@ -11,14 +11,15 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/vradovic/aether/backend/internal/api"
+	"github.com/vradovic/aether/backend/internal/api/apitest"
+	"github.com/vradovic/aether/backend/internal/api/contacts"
 	"github.com/vradovic/aether/backend/internal/core"
 )
 
 func TestContactsService(t *testing.T) {
 	ctx := context.Background()
-	pool, queries := startDatabase(t, ctx)
-	service := api.NewContactsService(queries, pool)
+	pool, queries := apitest.StartDatabase(t, ctx)
+	service := contacts.NewService(queries, pool)
 
 	t.Run("send", func(t *testing.T) {
 		t.Run("creates a pending request for a trimmed username", func(t *testing.T) {
@@ -52,8 +53,8 @@ func TestContactsService(t *testing.T) {
 			senderID := createContactsTestUser(t, ctx, pool, "missing_sender")
 
 			requestID, err := service.Send(ctx, senderID.String(), "does_not_exist")
-			if !errors.Is(err, api.ErrUserNotFound) {
-				t.Fatalf("Send() error = %v, want %v", err, api.ErrUserNotFound)
+			if !errors.Is(err, contacts.ErrUserNotFound) {
+				t.Fatalf("Send() error = %v, want %v", err, contacts.ErrUserNotFound)
 			}
 			if requestID.Valid {
 				t.Fatalf("Send() request ID = %s, want invalid UUID", requestID.String())
@@ -64,8 +65,8 @@ func TestContactsService(t *testing.T) {
 			userID := createContactsTestUser(t, ctx, pool, "self_request")
 
 			_, err := service.Send(ctx, userID.String(), "self_request")
-			if !errors.Is(err, api.ErrSelfRequest) {
-				t.Fatalf("Send() error = %v, want %v", err, api.ErrSelfRequest)
+			if !errors.Is(err, contacts.ErrSelfRequest) {
+				t.Fatalf("Send() error = %v, want %v", err, contacts.ErrSelfRequest)
 			}
 		})
 
@@ -86,8 +87,8 @@ func TestContactsService(t *testing.T) {
 			} {
 				t.Run(tt.name, func(t *testing.T) {
 					_, err := service.Send(ctx, tt.senderID.String(), tt.username)
-					if !errors.Is(err, api.ErrPendingRequestExists) {
-						t.Fatalf("Send() error = %v, want %v", err, api.ErrPendingRequestExists)
+					if !errors.Is(err, contacts.ErrPendingRequestExists) {
+						t.Fatalf("Send() error = %v, want %v", err, contacts.ErrPendingRequestExists)
 					}
 				})
 			}
@@ -194,11 +195,6 @@ func TestContactsService(t *testing.T) {
 					t.Fatalf("seed Send() error = %v", err)
 				}
 
-				// err = tt.mutate(ctx, tt.wrongActor(senderID, recipientID).String(), requestID)
-				// if !errors.Is(err, api.ErrRequestNotFound) {
-				// 	t.Fatalf("mutation by wrong actor error = %v, want %v", err, api.ErrRequestNotFound)
-				// }
-
 				actorID := senderID
 				if tt.name != "cancel" {
 					actorID = recipientID
@@ -214,10 +210,6 @@ func TestContactsService(t *testing.T) {
 				if status != tt.wantStatus {
 					t.Fatalf("request status = %q, want %q", status, tt.wantStatus)
 				}
-
-				// if err := tt.mutate(ctx, actorID.String(), requestID); !errors.Is(err, api.ErrRequestNotFound) {
-				// 	t.Fatalf("repeated mutation error = %v, want %v", err, api.ErrRequestNotFound)
-				// }
 			})
 		}
 	})

@@ -1,4 +1,4 @@
-package api_test
+package apitest
 
 import (
 	"context"
@@ -14,10 +14,10 @@ import (
 )
 
 const (
-	testSigningKey = "integration-test-signing-key"
+	TestSigningKey = "integration-test-signing-key"
 )
 
-func startDatabase(t *testing.T, ctx context.Context) (*pgxpool.Pool, *db.Queries) {
+func StartDatabase(t *testing.T, ctx context.Context) (*pgxpool.Pool, *db.Queries) {
 	t.Helper()
 
 	container, err := postgres.Run(ctx,
@@ -53,7 +53,7 @@ func startDatabase(t *testing.T, ctx context.Context) (*pgxpool.Pool, *db.Querie
 		t.Fatalf("goose set dialect error: %v", err)
 	}
 
-	migrationsDir := filepath.Join("..", "..", "sql", "migrations")
+	migrationsDir := filepath.Join("..", "..", "..", "sql", "migrations")
 	if err := goose.Up(sqlDB, migrationsDir, goose.WithNoVersioning()); err != nil {
 		t.Fatalf("goose up error: %v", err)
 	}

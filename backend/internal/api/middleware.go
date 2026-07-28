@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 
+	"github.com/vradovic/aether/backend/internal/api/httputil"
 	"github.com/vradovic/aether/backend/internal/core"
 )
 
@@ -17,13 +18,13 @@ func (m Middleware) RequireAuth(next HandlerWithUser) http.Handler {
 		authorization := r.Header.Get("Authorization")
 		tokenString, err := core.ExtractBearerToken(authorization)
 		if err != nil {
-			httpUnauthorized(w)
+			httputil.Unauthorized(w)
 			return
 		}
 
 		id, err := core.ParseTokenSubject(tokenString, m.SigningKey)
 		if err != nil {
-			httpUnauthorized(w)
+			httputil.Unauthorized(w)
 			return
 		}
 

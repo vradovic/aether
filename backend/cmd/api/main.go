@@ -10,6 +10,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/vradovic/aether/backend/internal/api"
+	"github.com/vradovic/aether/backend/internal/api/auth"
+	"github.com/vradovic/aether/backend/internal/api/contacts"
+	"github.com/vradovic/aether/backend/internal/api/conversations"
 	"github.com/vradovic/aether/backend/internal/db"
 )
 
@@ -35,14 +38,14 @@ func main() {
 
 	middleware := api.Middleware{SigningKey: cfg.JWTSigningKey}
 
-	authService := api.NewAuthService(queries, cfg.JWTSigningKey)
-	authHandler := api.NewAuthHandler(authService, logger)
+	authService := auth.NewService(queries, cfg.JWTSigningKey)
+	authHandler := auth.NewHandler(authService, logger)
 
-	contactsService := api.NewContactsService(queries, pool)
-	contactsHandler := api.NewContactsHandler(contactsService, logger)
+	contactsService := contacts.NewService(queries, pool)
+	contactsHandler := contacts.NewHandler(contactsService, logger)
 
-	conversationsService := api.NewConversationsService(queries, logger)
-	conversationsHandler := api.NewConversationsHandler(conversationsService, logger)
+	conversationsService := conversations.NewService(queries, logger)
+	conversationsHandler := conversations.NewHandler(conversationsService, logger)
 
 	mux := http.NewServeMux()
 	authHandler.RegisterRoutes(mux)

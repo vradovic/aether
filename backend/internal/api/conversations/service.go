@@ -1,4 +1,4 @@
-package api
+package conversations
 
 import (
 	"context"
@@ -56,7 +56,7 @@ type ConversationParticipant struct {
 	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
-type conversationsQuerier interface {
+type Querier interface {
 	GetConversationsForUser(context.Context, pgtype.UUID) ([]db.Conversation, error)
 	CreateConversationWithCreator(context.Context, db.CreateConversationWithCreatorParams) (db.CreateConversationWithCreatorRow, error)
 	UpdateConversationName(context.Context, db.UpdateConversationNameParams) (db.Conversation, error)
@@ -69,16 +69,16 @@ type conversationsQuerier interface {
 	DeleteConversationParticipant(context.Context, db.DeleteConversationParticipantParams) (db.ConversationParticipant, error)
 }
 
-type conversationsService struct {
-	querier conversationsQuerier
+type Service struct {
+	querier Querier
 	logger  *slog.Logger
 }
 
-func NewConversationsService(querier conversationsQuerier, logger *slog.Logger) *conversationsService {
-	return &conversationsService{querier: querier, logger: logger}
+func NewService(querier Querier, logger *slog.Logger) *Service {
+	return &Service{querier: querier, logger: logger}
 }
 
-func (s *conversationsService) GetConversations(ctx context.Context, userID string) ([]Conversation, error) {
+func (s *Service) GetConversations(ctx context.Context, userID string) ([]Conversation, error) {
 	parsedUserID, err := core.ParseUUID(userID)
 	if err != nil {
 		return nil, err
@@ -105,7 +105,7 @@ func (s *conversationsService) GetConversations(ctx context.Context, userID stri
 	return conversations, nil
 }
 
-func (s *conversationsService) CreateConversation(ctx context.Context, name, userID string) (Conversation, error) {
+func (s *Service) CreateConversation(ctx context.Context, name, userID string) (Conversation, error) {
 	creatorID, err := core.ParseUUID(userID)
 	if err != nil {
 		return Conversation{}, err
@@ -135,7 +135,7 @@ func (s *conversationsService) CreateConversation(ctx context.Context, name, use
 	}, nil
 }
 
-func (s *conversationsService) UpdateConversation(ctx context.Context, name, userID, conversationID string) (Conversation, error) {
+func (s *Service) UpdateConversation(ctx context.Context, name, userID, conversationID string) (Conversation, error) {
 	creatorID, err := core.ParseUUID(userID)
 	if err != nil {
 		return Conversation{}, err
@@ -172,7 +172,7 @@ func (s *conversationsService) UpdateConversation(ctx context.Context, name, use
 	}, nil
 }
 
-func (s *conversationsService) GetMessages(ctx context.Context, userID, conversationID string, afterSequence int64) ([]Message, error) {
+func (s *Service) GetMessages(ctx context.Context, userID, conversationID string, afterSequence int64) ([]Message, error) {
 	if afterSequence < 0 {
 		return nil, ErrInvalidAfterSequence
 	}
@@ -222,7 +222,7 @@ func (s *conversationsService) GetMessages(ctx context.Context, userID, conversa
 	return messages, nil
 }
 
-func (s *conversationsService) AddParticipant(ctx context.Context, userID, conversationID, participantID string) (ConversationParticipant, error) {
+func (s *Service) AddParticipant(ctx context.Context, userID, conversationID, participantID string) (ConversationParticipant, error) {
 	creatorID, err := core.ParseUUID(userID)
 	if err != nil {
 		return ConversationParticipant{}, err
@@ -283,7 +283,7 @@ func (s *conversationsService) AddParticipant(ctx context.Context, userID, conve
 	}, nil
 }
 
-func (s *conversationsService) DeleteConversation(ctx context.Context, userID, conversationID string) error {
+func (s *Service) DeleteConversation(ctx context.Context, userID, conversationID string) error {
 	creatorID, err := core.ParseUUID(userID)
 	if err != nil {
 		return err
@@ -305,7 +305,7 @@ func (s *conversationsService) DeleteConversation(ctx context.Context, userID, c
 	return nil
 }
 
-func (s *conversationsService) RemoveParticipant(ctx context.Context, userID, conversationID, participantID string) error {
+func (s *Service) RemoveParticipant(ctx context.Context, userID, conversationID, participantID string) error {
 	creatorID, err := core.ParseUUID(userID)
 	if err != nil {
 		return err

@@ -1,4 +1,4 @@
-package api
+package auth
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/vradovic/aether/backend/internal/api"
 	"github.com/vradovic/aether/backend/internal/core"
 	"github.com/vradovic/aether/backend/internal/db"
 )
@@ -62,7 +63,6 @@ func (r RegisterInput) Normalize() RegisterInput {
 		FirstName: firstName,
 		LastName:  lastName,
 	}
-
 }
 
 func (r RegisterInput) Validate() error {
@@ -74,7 +74,7 @@ func (r RegisterInput) Validate() error {
 	}
 
 	addr, err := mail.ParseAddress(r.Email)
-	if err != nil || addr.Address != r.Email { // Required to check Address because ParseAddress parses "Name <name@email.com>" as well
+	if err != nil || addr.Address != r.Email {
 		return ErrEmailFormat
 	}
 
@@ -91,36 +91,36 @@ func (r RegisterInput) Validate() error {
 	return nil
 }
 
-type authQuerier interface {
+type Querier interface {
 	CreateUser(ctx context.Context, arg db.CreateUserParams) error
 	GetUserCredentialsByEmail(ctx context.Context, email string) (db.GetUserCredentialsByEmailRow, error)
 }
 
-type authService struct {
-	querier    authQuerier
+type Service struct {
+	querier    Querier
 	signingKey string
 }
 
-func NewAuthService(queries authQuerier, signingKey string) *authService {
-	return &authService{
+func NewService(queries Querier, signingKey string) *Service {
+	return &Service{
 		querier:    queries,
 		signingKey: signingKey,
 	}
 }
 
-func (s *authService) Login(ctx context.Context, input LoginInput) (LoginOutput, error) {
+func (s *Service) Login(ctx context.Context, input LoginInput) (LoginOutput, error) {
 	input = input.Normalize()
 
 	credentials, err := s.querier.GetUserCredentialsByEmail(ctx, input.Email)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return LoginOutput{}, ErrInvalidCredentials
+		return LoginOutput{}, api.ErrInvalidCredentials
 	}
 	if err != nil {
 		return LoginOutput{}, fmt.Errorf("get user credentials: %w", err)
 	}
 
-	if err := VerifyPassword(input.Password, credentials.PasswordHash); err != nil {
-		return LoginOutput{}, ErrInvalidCredentials
+	if err := api.VerifyPassword(input.Password, credentials.PasswordHash); err != nil {
+		return LoginOutput{}, api.ErrInvalidCredentials
 	}
 
 	token, err := core.IssueToken(s.signingKey, credentials.UserID.String())
@@ -133,13 +133,13 @@ func (s *authService) Login(ctx context.Context, input LoginInput) (LoginOutput,
 	}, nil
 }
 
-func (s *authService) Register(ctx context.Context, input RegisterInput) error {
+func (s *Service) Register(ctx context.Context, input RegisterInput) error {
 	input = input.Normalize()
 	if err := input.Validate(); err != nil {
 		return err
 	}
 
-	passwordHash, err := HashPassword(input.Password)
+	passwordHash, err := api.HashPassword(input.Password)
 	if err != nil {
 		return err
 	}

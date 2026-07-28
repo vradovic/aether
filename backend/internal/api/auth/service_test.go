@@ -1,4 +1,4 @@
-package api_test
+package auth_test
 
 import (
 	"context"
@@ -8,17 +8,19 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/vradovic/aether/backend/internal/api"
+	"github.com/vradovic/aether/backend/internal/api/apitest"
+	"github.com/vradovic/aether/backend/internal/api/auth"
 	"github.com/vradovic/aether/backend/internal/core"
 )
 
 func TestAuthService(t *testing.T) {
 	ctx := context.Background()
-	pool, queries := startDatabase(t, ctx)
-	service := api.NewAuthService(queries, testSigningKey)
+	pool, queries := apitest.StartDatabase(t, ctx)
+	service := auth.NewService(queries, apitest.TestSigningKey)
 
 	t.Run("register", func(t *testing.T) {
 		t.Run("stores normalized user and hashed password", func(t *testing.T) {
-			input := api.RegisterInput{
+			input := auth.RegisterInput{
 				Email:     "  Alice.Example@EXAMPLE.COM ",
 				Username:  "  alice_example  ",
 				Password:  "correct-horse-battery-staple",
@@ -57,16 +59,16 @@ func TestAuthService(t *testing.T) {
 		t.Run("rejects invalid input without writing", func(t *testing.T) {
 			tests := []struct {
 				name   string
-				mutate func(*api.RegisterInput)
+				mutate func(*auth.RegisterInput)
 				want   error
 			}{
-				{name: "invalid email", mutate: func(i *api.RegisterInput) { i.Email = "not-an-email" }, want: api.ErrEmailFormat},
-				{name: "short password", mutate: func(i *api.RegisterInput) { i.Password = "short" }, want: api.ErrPasswordLength},
-				{name: "long password", mutate: func(i *api.RegisterInput) { i.Password = strings.Repeat("a", api.MaxPasswordLengthBytes+1) }, want: api.ErrPasswordLength},
-				{name: "short username", mutate: func(i *api.RegisterInput) { i.Username = "ab" }, want: api.ErrUsernameLength},
-				{name: "long username", mutate: func(i *api.RegisterInput) { i.Username = strings.Repeat("a", api.MaxUsernameLength+1) }, want: api.ErrUsernameLength},
-				{name: "short first name", mutate: func(i *api.RegisterInput) { i.FirstName = "A" }, want: api.ErrNameLength},
-				{name: "long last name", mutate: func(i *api.RegisterInput) { i.LastName = strings.Repeat("a", api.MaxNameLength+1) }, want: api.ErrNameLength},
+				{name: "invalid email", mutate: func(i *auth.RegisterInput) { i.Email = "not-an-email" }, want: auth.ErrEmailFormat},
+				{name: "short password", mutate: func(i *auth.RegisterInput) { i.Password = "short" }, want: auth.ErrPasswordLength},
+				{name: "long password", mutate: func(i *auth.RegisterInput) { i.Password = strings.Repeat("a", auth.MaxPasswordLengthBytes+1) }, want: auth.ErrPasswordLength},
+				{name: "short username", mutate: func(i *auth.RegisterInput) { i.Username = "ab" }, want: auth.ErrUsernameLength},
+				{name: "long username", mutate: func(i *auth.RegisterInput) { i.Username = strings.Repeat("a", auth.MaxUsernameLength+1) }, want: auth.ErrUsernameLength},
+				{name: "short first name", mutate: func(i *auth.RegisterInput) { i.FirstName = "A" }, want: auth.ErrNameLength},
+				{name: "long last name", mutate: func(i *auth.RegisterInput) { i.LastName = strings.Repeat("a", auth.MaxNameLength+1) }, want: auth.ErrNameLength},
 			}
 
 			for _, tt := range tests {
@@ -99,7 +101,7 @@ func TestAuthService(t *testing.T) {
 
 			tests := []struct {
 				name       string
-				input      api.RegisterInput
+				input      auth.RegisterInput
 				constraint string
 			}{
 				{
@@ -137,7 +139,7 @@ func TestAuthService(t *testing.T) {
 		}
 
 		t.Run("returns access token for normalized email", func(t *testing.T) {
-			output, err := service.Login(ctx, api.LoginInput{
+			output, err := service.Login(ctx, auth.LoginInput{
 				Email:    "  LOGIN@EXAMPLE.COM ",
 				Password: input.Password,
 			})
@@ -152,7 +154,7 @@ func TestAuthService(t *testing.T) {
 			if err != nil {
 				t.Fatalf("get credentials: %v", err)
 			}
-			subject, err := core.ParseTokenSubject(output.AccessToken, testSigningKey)
+			subject, err := core.ParseTokenSubject(output.AccessToken, apitest.TestSigningKey)
 			if err != nil {
 				t.Fatalf("parse access token: %v", err)
 			}
@@ -163,10 +165,10 @@ func TestAuthService(t *testing.T) {
 
 		tests := []struct {
 			name  string
-			input api.LoginInput
+			input auth.LoginInput
 		}{
-			{name: "unknown email", input: api.LoginInput{Email: "missing@example.com", Password: input.Password}},
-			{name: "wrong password", input: api.LoginInput{Email: input.Email, Password: "wrong-password"}},
+			{name: "unknown email", input: auth.LoginInput{Email: "missing@example.com", Password: input.Password}},
+			{name: "wrong password", input: auth.LoginInput{Email: input.Email, Password: "wrong-password"}},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -174,7 +176,7 @@ func TestAuthService(t *testing.T) {
 				if !errors.Is(err, api.ErrInvalidCredentials) {
 					t.Fatalf("Login() error = %v, want %v", err, api.ErrInvalidCredentials)
 				}
-				if output != (api.LoginOutput{}) {
+				if output != (auth.LoginOutput{}) {
 					t.Fatalf("Login() output = %+v, want zero value", output)
 				}
 			})
@@ -182,8 +184,8 @@ func TestAuthService(t *testing.T) {
 	})
 }
 
-func validRegisterInput(email, username string) api.RegisterInput {
-	return api.RegisterInput{
+func validRegisterInput(email, username string) auth.RegisterInput {
+	return auth.RegisterInput{
 		Email:     email,
 		Username:  username,
 		Password:  "valid-password",
