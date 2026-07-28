@@ -2,7 +2,6 @@ package contacts
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/vradovic/aether/backend/internal/api"
+	"github.com/vradovic/aether/backend/internal/api/httputil"
 	"github.com/vradovic/aether/backend/internal/core"
 	"github.com/vradovic/aether/backend/internal/db"
 )
@@ -34,9 +34,9 @@ type contactRequestResponse struct {
 type ServiceInterface interface {
 	Send(ctx context.Context, userID pgtype.UUID, username string) (pgtype.UUID, error)
 	GetPendingContactRequests(ctx context.Context, userID pgtype.UUID) ([]db.ContactRequest, error)
-	Cancel(ctx context.Context, userID string, requestID pgtype.UUID) error
-	Accept(ctx context.Context, userID string, requestID pgtype.UUID) error
-	Decline(ctx context.Context, userID string, requestID pgtype.UUID) error
+	Cancel(ctx context.Context, userID, requestID pgtype.UUID) error
+	Accept(ctx context.Context, userID, requestID pgtype.UUID) error
+	Decline(ctx context.Context, userID, requestID pgtype.UUID) error
 }
 
 type Handler struct {
@@ -59,13 +59,23 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, m api.Middleware) {
 func (h *Handler) getPendingContactRequests(w http.ResponseWriter, r *http.Request, userID string) {
 	recipientID, err := core.ParseUUID(userID)
 	if err != nil {
-		h.writeError(w, err)
+		if errors.Is(err, core.ErrInvalidID) {
+			httputil.Unauthorized(w)
+			return
+		}
+		h.logger.Error("failed to parse user ID", "err", err)
+		httputil.InternalServerError(w)
 		return
 	}
 
 	requests, err := h.service.GetPendingContactRequests(r.Context(), recipientID)
 	if err != nil {
-		h.writeError(w, err)
+		if errors.Is(err, core.ErrInvalidID) {
+			httputil.Unauthorized(w)
+			return
+		}
+		h.logger.Error("failed to get pending contact requests", "err", err)
+		httputil.InternalServerError(w)
 		return
 	}
 
@@ -81,90 +91,130 @@ func (h *Handler) getPendingContactRequests(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		h.logger.Error("failed to encode contact requests response", "err", err)
-	}
+	httputil.WriteJSON(w, http.StatusOK, response, h.logger)
 }
 
 func (h *Handler) send(w http.ResponseWriter, r *http.Request, userID string) {
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var request sendRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.Username == "" {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+	if err := httputil.DecodeJSON(w, r, &request); err != nil || request.Username == "" {
+		httputil.BadRequest(w)
 		return
 	}
 
 	senderID, err := core.ParseUUID(userID)
 	if err != nil {
-		h.writeError(w, err)
+		if errors.Is(err, core.ErrInvalidID) {
+			httputil.Unauthorized(w)
+			return
+		}
+		h.logger.Error("failed to parse user ID", "err", err)
+		httputil.InternalServerError(w)
 		return
 	}
 
 	requestID, err := h.service.Send(r.Context(), senderID, request.Username)
 	if err != nil {
-		h.writeError(w, err)
+		if errors.Is(err, core.ErrInvalidID) {
+			httputil.Unauthorized(w)
+			return
+		}
+		h.logger.Error("failed to send contact request", "err", err)
+		httputil.InternalServerError(w)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(sendResponse{ID: requestID.String()}); err != nil {
-		h.logger.Error("failed to encode contact request response", "err", err)
-	}
+	httputil.WriteJSON(w, http.StatusCreated, sendResponse{ID: requestID.String()}, h.logger)
 }
 
 func (h *Handler) cancel(w http.ResponseWriter, r *http.Request, userID string) {
 	var requestID pgtype.UUID
 	if err := requestID.Scan(r.PathValue("requestID")); err != nil || !requestID.Valid {
-		http.Error(w, "invalid contact request ID", http.StatusBadRequest)
+		httputil.BadRequest(w)
 		return
 	}
-	if err := h.service.Cancel(r.Context(), userID, requestID); err != nil {
-		h.writeError(w, err)
+
+	senderID, err := core.ParseUUID(userID)
+	if err != nil {
+		if errors.Is(err, core.ErrInvalidID) {
+			httputil.Unauthorized(w)
+			return
+		}
+		h.logger.Error("failed to parse user ID", "err", err)
+		httputil.InternalServerError(w)
 		return
 	}
+
+	if err := h.service.Cancel(r.Context(), senderID, requestID); err != nil {
+		if errors.Is(err, core.ErrInvalidID) {
+			httputil.Unauthorized(w)
+			return
+		}
+		h.logger.Error("failed to cancel contact request", "err", err)
+		httputil.InternalServerError(w)
+		return
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) accept(w http.ResponseWriter, r *http.Request, userID string) {
 	var requestID pgtype.UUID
 	if err := requestID.Scan(r.PathValue("requestID")); err != nil || !requestID.Valid {
-		http.Error(w, "invalid contact request ID", http.StatusBadRequest)
+		httputil.BadRequest(w)
 		return
 	}
-	if err := h.service.Accept(r.Context(), userID, requestID); err != nil {
-		h.writeError(w, err)
+
+	recipientID, err := core.ParseUUID(userID)
+	if err != nil {
+		if errors.Is(err, core.ErrInvalidID) {
+			httputil.Unauthorized(w)
+			return
+		}
+		h.logger.Error("failed to parse user ID", "err", err)
+		httputil.InternalServerError(w)
 		return
 	}
+
+	if err := h.service.Accept(r.Context(), recipientID, requestID); err != nil {
+		if errors.Is(err, core.ErrInvalidID) {
+			httputil.Unauthorized(w)
+			return
+		}
+		h.logger.Error("failed to accept contact request", "err", err)
+		httputil.InternalServerError(w)
+		return
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) decline(w http.ResponseWriter, r *http.Request, userID string) {
 	var requestID pgtype.UUID
 	if err := requestID.Scan(r.PathValue("requestID")); err != nil || !requestID.Valid {
-		http.Error(w, "invalid contact request ID", http.StatusBadRequest)
+		httputil.BadRequest(w)
 		return
 	}
-	if err := h.service.Decline(r.Context(), userID, requestID); err != nil {
-		h.writeError(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
 
-func (h *Handler) writeError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, ErrUserNotFound), errors.Is(err, ErrRequestNotFound):
-		http.Error(w, err.Error(), http.StatusNotFound)
-	case errors.Is(err, ErrSelfRequest):
-		http.Error(w, err.Error(), http.StatusBadRequest)
-	case errors.Is(err, ErrPendingRequestExists):
-		http.Error(w, err.Error(), http.StatusConflict)
-	case errors.Is(err, core.ErrInvalidID):
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-	default:
-		h.logger.Error("contact request operation failed", "err", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+	recipientID, err := core.ParseUUID(userID)
+	if err != nil {
+		if errors.Is(err, core.ErrInvalidID) {
+			httputil.Unauthorized(w)
+			return
+		}
+		h.logger.Error("failed to parse user ID", "err", err)
+		httputil.InternalServerError(w)
+		return
 	}
+
+	if err := h.service.Decline(r.Context(), recipientID, requestID); err != nil {
+		if errors.Is(err, core.ErrInvalidID) {
+			httputil.Unauthorized(w)
+			return
+		}
+		h.logger.Error("failed to decline contact request", "err", err)
+		httputil.InternalServerError(w)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
