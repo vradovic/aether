@@ -51,13 +51,8 @@ func (s *Service) Send(ctx context.Context, userID pgtype.UUID, username string)
 	return request.ID, nil
 }
 
-func (s *Service) GetPendingContactRequests(ctx context.Context, userID string) ([]db.ContactRequest, error) {
-	recipientID, err := core.ParseUUID(userID)
-	if err != nil {
-		return nil, err
-	}
-
-	requests, err := s.queries.GetPendingContactRequests(ctx, recipientID)
+func (s *Service) GetPendingContactRequests(ctx context.Context, userID pgtype.UUID) ([]db.ContactRequest, error) {
+	requests, err := s.queries.GetPendingContactRequests(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get contact requests: %w", err)
 	}

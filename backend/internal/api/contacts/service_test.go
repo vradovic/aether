@@ -141,7 +141,7 @@ func TestContactsService(t *testing.T) {
 		insertContactsTestRequest(t, ctx, pool, recipientID, outgoingRecipientID, "pending", time.Now().Add(time.Hour))
 		insertContactsTestRequest(t, ctx, pool, declinedSenderID, recipientID, "declined", time.Now().Add(2*time.Hour))
 
-		requests, err := service.GetPendingContactRequests(ctx, recipientID.String())
+		requests, err := service.GetPendingContactRequests(ctx, recipientID)
 		if err != nil {
 			t.Fatalf("GetPendingContactRequests() error = %v", err)
 		}
@@ -220,13 +220,6 @@ func TestContactsService(t *testing.T) {
 			name string
 			call func() error
 		}{
-			{
-				name: "get pending",
-				call: func() error {
-					_, err := service.GetPendingContactRequests(ctx, "not-a-uuid")
-					return err
-				},
-			},
 			{name: "cancel", call: func() error { return service.Cancel(ctx, "not-a-uuid", requestID) }},
 			{name: "accept", call: func() error { return service.Accept(ctx, "not-a-uuid", requestID) }},
 			{name: "decline", call: func() error { return service.Decline(ctx, "not-a-uuid", requestID) }},

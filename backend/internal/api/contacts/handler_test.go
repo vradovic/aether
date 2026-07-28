@@ -38,7 +38,7 @@ func (f fakeContactsService) Send(context.Context, pgtype.UUID, string) (pgtype.
 	return f.requestID, f.sendErr
 }
 
-func (f fakeContactsService) GetPendingContactRequests(context.Context, string) ([]db.ContactRequest, error) {
+func (f fakeContactsService) GetPendingContactRequests(context.Context, pgtype.UUID) ([]db.ContactRequest, error) {
 	return f.requests, f.getErr
 }
 

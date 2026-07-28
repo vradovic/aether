@@ -33,7 +33,7 @@ type contactRequestResponse struct {
 
 type ServiceInterface interface {
 	Send(ctx context.Context, userID pgtype.UUID, username string) (pgtype.UUID, error)
-	GetPendingContactRequests(ctx context.Context, userID string) ([]db.ContactRequest, error)
+	GetPendingContactRequests(ctx context.Context, userID pgtype.UUID) ([]db.ContactRequest, error)
 	Cancel(ctx context.Context, userID string, requestID pgtype.UUID) error
 	Accept(ctx context.Context, userID string, requestID pgtype.UUID) error
 	Decline(ctx context.Context, userID string, requestID pgtype.UUID) error
@@ -57,7 +57,13 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, m api.Middleware) {
 }
 
 func (h *Handler) getPendingContactRequests(w http.ResponseWriter, r *http.Request, userID string) {
-	requests, err := h.service.GetPendingContactRequests(r.Context(), userID)
+	recipientID, err := core.ParseUUID(userID)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+
+	requests, err := h.service.GetPendingContactRequests(r.Context(), recipientID)
 	if err != nil {
 		h.writeError(w, err)
 		return
