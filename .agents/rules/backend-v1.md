@@ -46,3 +46,8 @@ Agents must respect the masterless nature of ScyllaDB and avoid relational anti-
 *   **No Auto-Increments:** Do not use SQL sequences or Lightweight Transactions (LWTs) for message IDs. 
 *   **Primary Key Strategy:** Messages are partitioned by the conversation and clustered chronologically using Type 1 TimeUUIDs. 
 *   **ID Generation:** The Go application must generate the `gocql.TimeUUID()` before insertion into ScyllaDB.
+
+## Tooling
+
+Something to keep in mind:
+* Postgres queries and migrations are in the backend/sql directory. Goose is used for migrations and sqlc is used for generating go code from raw sql queries.

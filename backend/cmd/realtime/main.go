@@ -53,12 +53,12 @@ func main() {
 		errCh <- router.Run()
 	}()
 
-	publisher := realtime.NewPublisher(nc, pool, queries, cfg.NATSSubject)
+	publisher := realtime.NewPublisher(nc, cfg.NATSSubject)
 
 	mux := http.NewServeMux()
 
 	wsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		realtime.ServeWs(w, r, logger, publisher, router, cfg.JWTSigningKey)
+		realtime.ServeWs(w, r, logger, publisher, router, queries, cfg.JWTSigningKey)
 	})
 	mux.Handle("/ws", wsHandler)
 	mux.HandleFunc("/healthz", realtime.Healthz)

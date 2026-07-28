@@ -8,10 +8,7 @@ type inboundMessage struct {
 
 type publishMessage struct {
 	inboundMessage
-	ID              string   `json:"id"`
-	SenderID        string   `json:"senderId"`
-	MessageSequence int64    `json:"messageSequence"`
-	Recipients      []string `json:"recipients"`
+	SenderID string `json:"senderId"`
 }
 
 type outboundMessage struct {
@@ -21,9 +18,4 @@ type outboundMessage struct {
 	MessageSequence int64  `json:"messageSequence"`
 	ClientMessageID string `json:"clientMessageId"`
 	Body            string `json:"body"`
-}
-
-type eventMessage struct {
-	outboundMessage
-	Recipients []string `json:"recipients"` // list of user ids
 }

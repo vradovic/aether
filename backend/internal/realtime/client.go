@@ -17,12 +17,13 @@ const (
 )
 
 type client struct {
-	logger    *slog.Logger
-	userID    string
-	conn      *websocket.Conn
-	send      chan outboundMessage
-	publisher publisher
-	router    router
+	logger        *slog.Logger
+	userID        string
+	conversations []string
+	conn          *websocket.Conn
+	send          chan outboundMessage
+	publisher     publisher
+	router        router
 }
 
 func (c *client) readPump(ctx context.Context) {
