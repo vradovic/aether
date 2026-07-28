@@ -26,7 +26,7 @@ func TestContactsService(t *testing.T) {
 			senderID := createContactsTestUser(t, ctx, pool, "send_sender")
 			recipientID := createContactsTestUser(t, ctx, pool, "send_recipient")
 
-			requestID, err := service.Send(ctx, senderID.String(), "  send_recipient  ")
+			requestID, err := service.Send(ctx, senderID, "  send_recipient  ")
 			if err != nil {
 				t.Fatalf("Send() error = %v", err)
 			}
@@ -52,7 +52,7 @@ func TestContactsService(t *testing.T) {
 		t.Run("returns user not found for an unknown username", func(t *testing.T) {
 			senderID := createContactsTestUser(t, ctx, pool, "missing_sender")
 
-			requestID, err := service.Send(ctx, senderID.String(), "does_not_exist")
+			requestID, err := service.Send(ctx, senderID, "does_not_exist")
 			if !errors.Is(err, contacts.ErrUserNotFound) {
 				t.Fatalf("Send() error = %v, want %v", err, contacts.ErrUserNotFound)
 			}
@@ -64,7 +64,7 @@ func TestContactsService(t *testing.T) {
 		t.Run("maps the distinct-users check constraint", func(t *testing.T) {
 			userID := createContactsTestUser(t, ctx, pool, "self_request")
 
-			_, err := service.Send(ctx, userID.String(), "self_request")
+			_, err := service.Send(ctx, userID, "self_request")
 			if !errors.Is(err, contacts.ErrSelfRequest) {
 				t.Fatalf("Send() error = %v, want %v", err, contacts.ErrSelfRequest)
 			}
@@ -73,7 +73,7 @@ func TestContactsService(t *testing.T) {
 		t.Run("maps the pending-pair unique index in both directions", func(t *testing.T) {
 			user1ID := createContactsTestUser(t, ctx, pool, "duplicate_user_1")
 			user2ID := createContactsTestUser(t, ctx, pool, "duplicate_user_2")
-			if _, err := service.Send(ctx, user1ID.String(), "duplicate_user_2"); err != nil {
+			if _, err := service.Send(ctx, user1ID, "duplicate_user_2"); err != nil {
 				t.Fatalf("seed Send() error = %v", err)
 			}
 
@@ -86,7 +86,7 @@ func TestContactsService(t *testing.T) {
 				{name: "reverse direction", senderID: user2ID, username: "duplicate_user_1"},
 			} {
 				t.Run(tt.name, func(t *testing.T) {
-					_, err := service.Send(ctx, tt.senderID.String(), tt.username)
+					_, err := service.Send(ctx, tt.senderID, tt.username)
 					if !errors.Is(err, contacts.ErrPendingRequestExists) {
 						t.Fatalf("Send() error = %v, want %v", err, contacts.ErrPendingRequestExists)
 					}
@@ -103,7 +103,7 @@ func TestContactsService(t *testing.T) {
 				t.Fatalf("insert contact: %v", err)
 			}
 
-			_, err := service.Send(ctx, user1ID.String(), "contact_user_2")
+			_, err := service.Send(ctx, user1ID, "contact_user_2")
 			if err == nil || !strings.Contains(err.Error(), "send contact request") {
 				t.Fatalf("Send() error = %v, want wrapped operation context", err)
 			}
@@ -117,7 +117,7 @@ func TestContactsService(t *testing.T) {
 			createContactsTestUser(t, ctx, pool, "fk_recipient")
 			missingSenderID := parseContactsTestUUID(t, "10000000-0000-0000-0000-000000000001")
 
-			_, err := service.Send(ctx, missingSenderID.String(), "fk_recipient")
+			_, err := service.Send(ctx, missingSenderID, "fk_recipient")
 			var pgErr *pgconn.PgError
 			if !errors.As(err, &pgErr) || pgErr.Code != "23503" ||
 				pgErr.ConstraintName != "contact_requests_sender_id_fkey" {
@@ -190,7 +190,7 @@ func TestContactsService(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				senderID := createContactsTestUser(t, ctx, pool, tt.name+"_sender")
 				recipientID := createContactsTestUser(t, ctx, pool, tt.name+"_recipient")
-				requestID, err := service.Send(ctx, senderID.String(), tt.name+"_recipient")
+				requestID, err := service.Send(ctx, senderID, tt.name+"_recipient")
 				if err != nil {
 					t.Fatalf("seed Send() error = %v", err)
 				}
@@ -220,13 +220,6 @@ func TestContactsService(t *testing.T) {
 			name string
 			call func() error
 		}{
-			{
-				name: "send",
-				call: func() error {
-					_, err := service.Send(ctx, "not-a-uuid", "someone")
-					return err
-				},
-			},
 			{
 				name: "get pending",
 				call: func() error {

@@ -34,7 +34,7 @@ type fakeContactsService struct {
 	declineErr error
 }
 
-func (f fakeContactsService) Send(context.Context, string, string) (pgtype.UUID, error) {
+func (f fakeContactsService) Send(context.Context, pgtype.UUID, string) (pgtype.UUID, error) {
 	return f.requestID, f.sendErr
 }
 

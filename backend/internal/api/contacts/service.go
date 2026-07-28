@@ -28,14 +28,9 @@ func NewService(queries *db.Queries, pool *pgxpool.Pool) *Service {
 	return &Service{queries: queries, pool: pool}
 }
 
-func (s *Service) Send(ctx context.Context, userID, username string) (pgtype.UUID, error) {
-	senderID, err := core.ParseUUID(userID)
-	if err != nil {
-		return pgtype.UUID{}, err
-	}
-
+func (s *Service) Send(ctx context.Context, userID pgtype.UUID, username string) (pgtype.UUID, error) {
 	request, err := s.queries.SendContactRequest(ctx, db.SendContactRequestParams{
-		SenderID: senderID,
+		SenderID: userID,
 		Username: strings.TrimSpace(username),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {

@@ -32,7 +32,7 @@ type contactRequestResponse struct {
 }
 
 type ServiceInterface interface {
-	Send(ctx context.Context, userID, username string) (pgtype.UUID, error)
+	Send(ctx context.Context, userID pgtype.UUID, username string) (pgtype.UUID, error)
 	GetPendingContactRequests(ctx context.Context, userID string) ([]db.ContactRequest, error)
 	Cancel(ctx context.Context, userID string, requestID pgtype.UUID) error
 	Accept(ctx context.Context, userID string, requestID pgtype.UUID) error
@@ -89,7 +89,13 @@ func (h *Handler) send(w http.ResponseWriter, r *http.Request, userID string) {
 		return
 	}
 
-	requestID, err := h.service.Send(r.Context(), userID, request.Username)
+	senderID, err := core.ParseUUID(userID)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+
+	requestID, err := h.service.Send(r.Context(), senderID, request.Username)
 	if err != nil {
 		h.writeError(w, err)
 		return
