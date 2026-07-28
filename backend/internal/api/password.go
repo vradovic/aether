@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -29,7 +30,7 @@ func VerifyPassword(password, passwordHash string) error {
 	)
 
 	if err != nil {
-		return ErrInvalidCredentials
+		return fmt.Errorf("%w: %w", ErrInvalidCredentials, err)
 	}
 
 	return nil

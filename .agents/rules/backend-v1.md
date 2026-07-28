@@ -47,7 +47,8 @@ Agents must respect the masterless nature of ScyllaDB and avoid relational anti-
 *   **Primary Key Strategy:** Messages are partitioned by the conversation and clustered chronologically using Type 1 TimeUUIDs. 
 *   **ID Generation:** The Go application must generate the `gocql.TimeUUID()` before insertion into ScyllaDB.
 
-## Tooling
+## Tooling & Testing Conventions
 
 Something to keep in mind:
 * Postgres queries and migrations are in the backend/sql directory. Goose is used for migrations and sqlc is used for generating go code from raw sql queries.
+* **Test Packages:** When writing unit or integration tests, always use external test packages (`package <name>_test`, e.g., `package api_test`) to test against the public package interface.
