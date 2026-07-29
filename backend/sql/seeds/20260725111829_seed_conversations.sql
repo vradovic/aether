@@ -1,18 +1,7 @@
 -- +goose Up
-WITH new_conversation AS (
-    INSERT INTO conversations (name, created_by)
-        VALUES (
-                   'Group Chat',
-                   (SELECT id FROM users WHERE username = 'jdoe')
-               )
-        RETURNING id
-)
-INSERT INTO conversation_participants (conversation_id, user_id)
-SELECT
-    new_conversation.id,
-    users.id
-FROM new_conversation, users
-WHERE users.username IN ('jdoe', 'jsmith', 'mgarcia');
+INSERT INTO conversations (id, name, created_by)
+    VALUES ('00000000-0000-0000-0000-000000000001', 'Group Chat', '00000000-0000-0000-0000-000000000001');
 
--- +goose Down
-SELECT 'down SQL query';
+INSERT INTO conversation_participants (conversation_id, user_id)
+SELECT '00000000-0000-0000-0000-000000000001', users.id
+FROM users;

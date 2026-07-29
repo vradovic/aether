@@ -2,37 +2,8 @@
 INSERT INTO contacts (user1_id, user2_id)
 VALUES
     -- John <-> Jane
-    (
-        LEAST(
-                (SELECT id FROM users WHERE username = 'jdoe'),
-                (SELECT id FROM users WHERE username = 'jsmith')
-        ),
-        GREATEST(
-                (SELECT id FROM users WHERE username = 'jdoe'),
-                (SELECT id FROM users WHERE username = 'jsmith')
-        )
-    ),
+    ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002'),
     -- John <-> Maria
-    (
-        LEAST(
-                (SELECT id FROM users WHERE username = 'jdoe'),
-                (SELECT id FROM users WHERE username = 'mgarcia')
-        ),
-        GREATEST(
-                (SELECT id FROM users WHERE username = 'jdoe'),
-                (SELECT id FROM users WHERE username = 'mgarcia')
-        )
-    ),
+    ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000003'),
     -- Jane <-> Maria
-    (
-        LEAST(
-                (SELECT id FROM users WHERE username = 'jsmith'),
-                (SELECT id FROM users WHERE username = 'mgarcia')
-        ),
-        GREATEST(
-                (SELECT id FROM users WHERE username = 'jsmith'),
-                (SELECT id FROM users WHERE username = 'mgarcia')
-        )
-    );
--- +goose Down
-SELECT 'down SQL query';
+    ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000003');
