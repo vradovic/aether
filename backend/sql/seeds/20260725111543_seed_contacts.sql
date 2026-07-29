@@ -1,3 +1,4 @@
+-- +goose Up
 INSERT INTO contacts (user1_id, user2_id)
 VALUES
     -- John <-> Jane
@@ -33,3 +34,5 @@ VALUES
                 (SELECT id FROM users WHERE username = 'mgarcia')
         )
     );
+-- +goose Down
+SELECT 'down SQL query';

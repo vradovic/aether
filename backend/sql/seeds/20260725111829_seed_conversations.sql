@@ -1,3 +1,4 @@
+-- +goose Up
 WITH new_conversation AS (
     INSERT INTO conversations (name, created_by)
         VALUES (
@@ -12,3 +13,6 @@ SELECT
     users.id
 FROM new_conversation, users
 WHERE users.username IN ('jdoe', 'jsmith', 'mgarcia');
+
+-- +goose Down
+SELECT 'down SQL query';
