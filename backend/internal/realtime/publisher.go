@@ -26,7 +26,8 @@ func (p publisher) publish(ctx context.Context, msg publishMessage) error {
 		return fmt.Errorf("marshal: %w", err)
 	}
 
-	if err = p.nc.Publish(p.subject, bytes); err != nil {
+	subject := fmt.Sprintf("messages.unprocessed.%s", msg.ConversationID)
+	if err = p.nc.Publish(subject, bytes); err != nil {
 		return fmt.Errorf("nats publish: %w", err)
 	}
 
