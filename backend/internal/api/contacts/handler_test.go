@@ -42,15 +42,15 @@ func (f fakeContactsService) GetPendingContactRequests(context.Context, pgtype.U
 	return f.requests, f.getErr
 }
 
-func (f fakeContactsService) Cancel(context.Context, string, pgtype.UUID) error {
+func (f fakeContactsService) Cancel(context.Context, pgtype.UUID, pgtype.UUID) error {
 	return f.cancelErr
 }
 
-func (f fakeContactsService) Accept(context.Context, string, pgtype.UUID) error {
+func (f fakeContactsService) Accept(context.Context, pgtype.UUID, pgtype.UUID) error {
 	return f.acceptErr
 }
 
-func (f fakeContactsService) Decline(context.Context, string, pgtype.UUID) error {
+func (f fakeContactsService) Decline(context.Context, pgtype.UUID, pgtype.UUID) error {
 	return f.declineErr
 }
 
@@ -122,15 +122,15 @@ func TestSendContactRequest(t *testing.T) {
 		}
 	})
 
-	t.Run("should return not found", func(t *testing.T) {
-		mux := newContactsMux(fakeContactsService{sendErr: contacts.ErrUserNotFound})
+	t.Run("should return internal error", func(t *testing.T) {
+		mux := newContactsMux(fakeContactsService{sendErr: errors.New("send error")})
 		request := authenticatedRequest(t, http.MethodPost, "/contact-requests", `{"username":"missing"}`)
 		response := httptest.NewRecorder()
 
 		mux.ServeHTTP(response, request)
 
-		if response.Code != http.StatusNotFound {
-			t.Fatalf("expected status %d, got %d, body: %s", http.StatusNotFound, response.Code, response.Body.String())
+		if response.Code != http.StatusInternalServerError {
+			t.Fatalf("expected status %d, got %d, body: %s", http.StatusInternalServerError, response.Code, response.Body.String())
 		}
 	})
 }
@@ -212,19 +212,19 @@ func TestUpdateContactRequest(t *testing.T) {
 		action  string
 		service fakeContactsService
 	}{
-		{action: "cancel", service: fakeContactsService{cancelErr: contacts.ErrRequestNotFound}},
-		{action: "accept", service: fakeContactsService{acceptErr: contacts.ErrRequestNotFound}},
-		{action: "decline", service: fakeContactsService{declineErr: contacts.ErrRequestNotFound}},
+		{action: "cancel", service: fakeContactsService{cancelErr: errors.New("cancel error")}},
+		{action: "accept", service: fakeContactsService{acceptErr: errors.New("accept error")}},
+		{action: "decline", service: fakeContactsService{declineErr: errors.New("decline error")}},
 	} {
-		t.Run(test.action+" should return not found", func(t *testing.T) {
+		t.Run(test.action+" should return internal error", func(t *testing.T) {
 			mux := newContactsMux(test.service)
 			request := authenticatedRequest(t, http.MethodPatch, "/contact-requests/"+testRequestID+"/"+test.action, "")
 			response := httptest.NewRecorder()
 
 			mux.ServeHTTP(response, request)
 
-			if response.Code != http.StatusNotFound {
-				t.Fatalf("expected status %d, got %d, body: %s", http.StatusNotFound, response.Code, response.Body.String())
+			if response.Code != http.StatusInternalServerError {
+				t.Fatalf("expected status %d, got %d, body: %s", http.StatusInternalServerError, response.Code, response.Body.String())
 			}
 		})
 	}
