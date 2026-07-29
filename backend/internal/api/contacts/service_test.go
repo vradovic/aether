@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/vradovic/aether/backend/internal/api/apitest"
 	"github.com/vradovic/aether/backend/internal/api/contacts"
+	"github.com/vradovic/aether/backend/internal/core"
 )
 
 func TestContactsService(t *testing.T) {
@@ -49,12 +49,12 @@ func TestContactsService(t *testing.T) {
 			}
 		})
 
-		t.Run("returns error for an unknown username", func(t *testing.T) {
+		t.Run("returns user not found for an unknown username", func(t *testing.T) {
 			senderID := createContactsTestUser(t, ctx, pool, "missing_sender")
 
 			requestID, err := service.Send(ctx, senderID, "does_not_exist")
-			if !errors.Is(err, pgx.ErrNoRows) {
-				t.Fatalf("Send() error = %v, want pgx.ErrNoRows in error chain", err)
+			if !errors.Is(err, contacts.ErrUserNotFound) {
+				t.Fatalf("Send() error = %v, want %v", err, contacts.ErrUserNotFound)
 			}
 			if requestID.Valid {
 				t.Fatalf("Send() request ID = %s, want invalid UUID", requestID.String())
@@ -65,8 +65,8 @@ func TestContactsService(t *testing.T) {
 			userID := createContactsTestUser(t, ctx, pool, "self_request")
 
 			_, err := service.Send(ctx, userID, "self_request")
-			if err == nil {
-				t.Fatal("Send() error = nil, want check constraint error")
+			if !errors.Is(err, contacts.ErrSelfRequest) {
+				t.Fatalf("Send() error = %v, want %v", err, contacts.ErrSelfRequest)
 			}
 		})
 
@@ -87,8 +87,8 @@ func TestContactsService(t *testing.T) {
 			} {
 				t.Run(tt.name, func(t *testing.T) {
 					_, err := service.Send(ctx, tt.senderID, tt.username)
-					if err == nil {
-						t.Fatal("Send() error = nil, want unique index error")
+					if !errors.Is(err, contacts.ErrPendingRequestExists) {
+						t.Fatalf("Send() error = %v, want %v", err, contacts.ErrPendingRequestExists)
 					}
 				})
 			}
@@ -164,7 +164,7 @@ func TestContactsService(t *testing.T) {
 			name       string
 			wantStatus string
 			wrongActor func(senderID, recipientID pgtype.UUID) pgtype.UUID
-			mutate     func(context.Context, pgtype.UUID, pgtype.UUID) error
+			mutate     func(context.Context, string, pgtype.UUID) error
 		}{
 			{
 				name:       "cancel",
@@ -199,7 +199,7 @@ func TestContactsService(t *testing.T) {
 				if tt.name != "cancel" {
 					actorID = recipientID
 				}
-				if err := tt.mutate(ctx, actorID, requestID); err != nil {
+				if err := tt.mutate(ctx, actorID.String(), requestID); err != nil {
 					t.Fatalf("mutation error = %v", err)
 				}
 
@@ -209,6 +209,26 @@ func TestContactsService(t *testing.T) {
 				}
 				if status != tt.wantStatus {
 					t.Fatalf("request status = %q, want %q", status, tt.wantStatus)
+				}
+			})
+		}
+	})
+
+	t.Run("rejects invalid user IDs", func(t *testing.T) {
+		requestID := parseContactsTestUUID(t, "20000000-0000-0000-0000-000000000001")
+		tests := []struct {
+			name string
+			call func() error
+		}{
+			{name: "cancel", call: func() error { return service.Cancel(ctx, "not-a-uuid", requestID) }},
+			{name: "accept", call: func() error { return service.Accept(ctx, "not-a-uuid", requestID) }},
+			{name: "decline", call: func() error { return service.Decline(ctx, "not-a-uuid", requestID) }},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				if err := tt.call(); !errors.Is(err, core.ErrInvalidID) {
+					t.Fatalf("error = %v, want %v", err, core.ErrInvalidID)
 				}
 			})
 		}

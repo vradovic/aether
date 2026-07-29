@@ -13,11 +13,7 @@ func InternalServerError(w http.ResponseWriter) {
 }
 
 func Unauthorized(w http.ResponseWriter) {
-	http.Error(w, "User is unauthorized.", http.StatusUnauthorized)
-}
-
-func BadRequest(w http.ResponseWriter) {
-	http.Error(w, "Bad request.", http.StatusBadRequest)
+	http.Error(w, "User is unauthorized", http.StatusUnauthorized)
 }
 
 func DecodeJSON(w http.ResponseWriter, r *http.Request, target any) error {
