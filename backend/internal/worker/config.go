@@ -6,6 +6,7 @@ import (
 )
 
 type Config struct {
+	ServerAddress  string
 	ScyllaHosts    string
 	ScyllaKeyspace string
 	NatsAddress    string
@@ -16,12 +17,17 @@ type Config struct {
 
 func LoadConfig() (*Config, error) {
 	cfg := &Config{
+		ServerAddress:  os.Getenv("SERVER_ADDRESS"),
 		ScyllaHosts:    os.Getenv("SCYLLA_HOSTS"),
 		ScyllaKeyspace: os.Getenv("SCYLLA_KEYSPACE"),
 		NatsAddress:    os.Getenv("NATS_ADDRESS"),
 		NatsStream:     os.Getenv("NATS_STREAM"),
 		NatsDurable:    os.Getenv("NATS_DURABLE"),
 		NatsSubject:    os.Getenv("NATS_SUBJECT"),
+	}
+
+	if cfg.ServerAddress == "" {
+		return nil, fmt.Errorf("SERVER_ADDRESS is required")
 	}
 
 	if cfg.ScyllaHosts == "" {

@@ -1,0 +1,14 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: "realtime-service"
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+    relabel_configs:
+      - source_labels: [__meta_docker_port_private]
+        regex: "8080"
+        action: keep
+  - job_name: "worker"
+    static_configs:
+      - targets: ["worker-service:8079"]

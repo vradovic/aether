@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/vradovic/aether/backend/internal/db"
 	"github.com/vradovic/aether/backend/internal/realtime"
 )
@@ -48,9 +49,18 @@ func main() {
 
 	errCh := make(chan error, 2)
 
-	router := realtime.NewRouter(context.Background(), logger, nc, cfg.NATSSubject)
+	registry, metrics := realtime.InitMetrics()
+
+	router := realtime.NewRouter(context.Background(), logger, nc, cfg.NATSSubject, metrics)
 	go func() {
 		errCh <- router.Run()
+	}()
+
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		for range ticker.C {
+			metrics.NatsChannelDepth.Set(float64(len(router.NatsCh)))
+		}
 	}()
 
 	publisher := realtime.NewPublisher(nc, cfg.NATSSubject)
@@ -58,10 +68,11 @@ func main() {
 	mux := http.NewServeMux()
 
 	wsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		realtime.ServeWs(w, r, logger, publisher, router, queries, cfg.JWTSigningKey)
+		realtime.ServeWs(w, r, logger, publisher, router, queries, cfg.JWTSigningKey, metrics)
 	})
 	mux.Handle("/ws", wsHandler)
 	mux.HandleFunc("/healthz", realtime.Healthz)
+	mux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
 
 	server := &http.Server{
 		Addr:              cfg.ServerAddress,

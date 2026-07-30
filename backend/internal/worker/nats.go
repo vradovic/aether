@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 )
 
 type NatsPublisher struct {
@@ -23,10 +24,10 @@ func (np *NatsPublisher) Publish(msg Message, data []byte) error {
 }
 
 type NatsAcker struct {
-	msg *nats.Msg
+	msg jetstream.Msg
 }
 
-func NewNatsAcker(msg *nats.Msg) *NatsAcker {
+func NewNatsAcker(msg jetstream.Msg) *NatsAcker {
 	return &NatsAcker{msg: msg}
 }
 

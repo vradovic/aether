@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/nats-io/nats.go"
 )
@@ -14,7 +15,7 @@ type convSubscription struct {
 	refCount int
 }
 
-type router struct {
+type Router struct {
 	ctx                 context.Context
 	logger              *slog.Logger
 	register            chan *client
@@ -22,13 +23,14 @@ type router struct {
 	registry            map[string]map[*client]struct{} // user id maps to map of clients
 	conversationClients map[string]map[*client]struct{} // conversation id maps to map of clients
 	subscriptions       map[string]*convSubscription    // conversation id maps to convSubscription
-	natsCh              chan *nats.Msg
+	NatsCh              chan *nats.Msg
 	nc                  *nats.Conn
 	subject             string
+	metrics             *Metrics
 }
 
-func NewRouter(ctx context.Context, logger *slog.Logger, nc *nats.Conn, subject string) router {
-	return router{
+func NewRouter(ctx context.Context, logger *slog.Logger, nc *nats.Conn, subject string, metrics *Metrics) Router {
+	return Router{
 		ctx:                 ctx,
 		logger:              logger,
 		nc:                  nc,
@@ -38,11 +40,12 @@ func NewRouter(ctx context.Context, logger *slog.Logger, nc *nats.Conn, subject 
 		registry:            make(map[string]map[*client]struct{}),
 		conversationClients: make(map[string]map[*client]struct{}),
 		subscriptions:       make(map[string]*convSubscription),
-		natsCh:              make(chan *nats.Msg, 100),
+		NatsCh:              make(chan *nats.Msg, 100),
+		metrics:             metrics,
 	}
 }
 
-func (r router) Run() error {
+func (r Router) Run() error {
 	defer func() {
 		for convID, subEntry := range r.subscriptions {
 			subEntry.sub.Unsubscribe()
@@ -58,7 +61,7 @@ func (r router) Run() error {
 			r.registerClient(c)
 		case c := <-r.unregister:
 			r.unregisterClient(c)
-		case natsMsg := <-r.natsCh:
+		case natsMsg := <-r.NatsCh:
 			var msg outboundMessage
 			err := json.Unmarshal(natsMsg.Data, &msg)
 			if err != nil {
@@ -66,12 +69,17 @@ func (r router) Run() error {
 				continue
 			}
 
-			r.deliver(msg)
+			r.metrics.StageDuration.WithLabelValues("processed_message_pull").Observe(time.Since(msg.PublishedAt).Seconds())
+			tm := TraceMessage{}
+			tm.outboundMessage = msg
+			tm.TraceTime = time.Now()
+
+			r.deliver(tm)
 		}
 	}
 }
 
-func (r router) registerClient(c *client) {
+func (r Router) registerClient(c *client) {
 	if r.registry[c.userID] == nil {
 		r.registry[c.userID] = make(map[*client]struct{})
 	}
@@ -87,7 +95,7 @@ func (r router) registerClient(c *client) {
 			subEntry.refCount++
 		} else {
 			subject := fmt.Sprintf("messages.processed.%s", convID)
-			sub, err := r.nc.ChanSubscribe(subject, r.natsCh)
+			sub, err := r.nc.ChanSubscribe(subject, r.NatsCh)
 			if err != nil {
 				r.logger.Error("failed to subscribe to conversation topic", "subject", subject, "error", err)
 				continue
@@ -101,7 +109,7 @@ func (r router) registerClient(c *client) {
 	}
 }
 
-func (r router) unregisterClient(c *client) {
+func (r Router) unregisterClient(c *client) {
 	clients, ok := r.registry[c.userID]
 	if !ok {
 		return
@@ -139,7 +147,7 @@ func (r router) unregisterClient(c *client) {
 	}
 }
 
-func (r router) deliver(msg outboundMessage) {
+func (r Router) deliver(msg TraceMessage) {
 	clients, ok := r.conversationClients[msg.ConversationID]
 	if !ok {
 		return

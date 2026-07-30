@@ -1,7 +1,6 @@
 package realtime
 
 import (
-	"context"
 	"log/slog"
 	"net/http"
 
@@ -15,7 +14,7 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
-func ServeWs(w http.ResponseWriter, r *http.Request, logger *slog.Logger, publisher publisher, router router, queries *db.Queries, secret string) {
+func ServeWs(w http.ResponseWriter, r *http.Request, logger *slog.Logger, publisher publisher, router Router, queries *db.Queries, secret string, metrics *Metrics) {
 	userID, err := ParseToken(w, r, secret)
 	if err != nil {
 		return
@@ -44,23 +43,21 @@ func ServeWs(w http.ResponseWriter, r *http.Request, logger *slog.Logger, publis
 		return
 	}
 
-	ctx, cancel := context.WithCancel(r.Context())
-	defer cancel()
-
 	c := &client{
 		conn:          conn,
-		send:          make(chan outboundMessage, 64),
+		send:          make(chan TraceMessage, 64),
 		userID:        userID,
 		conversations: convIDs,
 		logger:        logger,
 		publisher:     publisher,
 		router:        router,
+		metrics:       metrics,
 	}
 
 	router.register <- c
 
 	go c.writePump()
-	c.readPump(ctx)
+	c.readPump()
 }
 
 func Healthz(w http.ResponseWriter, _ *http.Request) {

@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -13,6 +13,8 @@ import (
 
 	"github.com/gocql/gocql"
 	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/vradovic/aether/backend/internal/worker"
 )
 
@@ -61,48 +63,64 @@ func main() {
 
 	publisher := worker.NewNatsPublisher(nc)
 
-	js, err := nc.JetStream()
+	js, err := jetstream.New(nc)
 	if err != nil {
 		logger.Error("failed to get jetstream context", "error", err)
 		os.Exit(1)
 	}
 
-	var subOpts []nats.SubOpt
-	if cfg.NatsStream != "" {
-		subOpts = append(subOpts, nats.BindStream(cfg.NatsStream))
-	}
+	ctxNats, cancelNats := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelNats()
 
-	sub, err := js.PullSubscribe(cfg.NatsSubject, cfg.NatsDurable, subOpts...)
+	stream, err := js.Stream(ctxNats, cfg.NatsStream)
 	if err != nil {
-		logger.Error("failed to subscribe to nats durable consumer", "error", err, "stream", cfg.NatsStream, "durable", cfg.NatsDurable, "subject", cfg.NatsSubject)
+		logger.Error("failed to get stream", "error", err)
 		os.Exit(1)
 	}
-	defer sub.Unsubscribe()
-	logger.Info("subscribed to nats durable consumer", "stream", cfg.NatsStream, "durable", cfg.NatsDurable, "subject", cfg.NatsSubject)
 
-	logger.Info("starting worker processing loop")
+	cons, err := stream.Consumer(ctxNats, cfg.NatsDurable)
+	if err != nil {
+		logger.Error("failed to get consumer", "error", err)
+		os.Exit(1)
+	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			logger.Info("shutting down worker")
-			return
-		default:
-		}
+	registry, metrics := worker.InitMetrics()
 
-		msgs, err := sub.Fetch(10, nats.Context(ctx))
+	mux := http.NewServeMux()
+
+	mux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
+
+	server := &http.Server{
+		Addr:    cfg.ServerAddress,
+		Handler: mux,
+	}
+
+	errCh := make(chan error)
+
+	go func() {
+		errCh <- server.ListenAndServe()
+	}()
+
+	logger.Info("starting worker consumer")
+
+	cc, err := cons.Consume(func(msg jetstream.Msg) {
+		acker := worker.NewNatsAcker(msg)
+		worker.Process(ctx, msg.Data(), writer, publisher, acker, logger, metrics)
+	})
+	defer cc.Stop()
+	if err != nil {
+		logger.Error("failed to start consuming", "error", err)
+		os.Exit(1)
+	}
+
+	select {
+	case err := <-errCh:
 		if err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, nats.ErrTimeout) {
-				continue
-			}
-			logger.Error("error fetching messages from nats stream", "error", err)
-			time.Sleep(100 * time.Millisecond)
-			continue
+			logger.Error("service failure", "error", err)
+			os.Exit(1)
 		}
-
-		for _, msg := range msgs {
-			acker := worker.NewNatsAcker(msg)
-			worker.Process(ctx, msg.Data, writer, publisher, acker, logger)
-		}
+	case <-ctx.Done():
+		logger.Info("shutting down worker")
+		return
 	}
 }

@@ -15,10 +15,16 @@ type publishMessage struct {
 }
 
 type outboundMessage struct {
-	ID              string `json:"id"`
-	ConversationID  string `json:"conversationId"`
-	SenderID        string `json:"senderId"`
-	MessageSequence int64  `json:"messageSequence"`
-	ClientMessageID string `json:"clientMessageId"`
-	Body            string `json:"body"`
+	ID              string    `json:"id"`
+	ConversationID  string    `json:"conversationId"`
+	SenderID        string    `json:"senderId"`
+	MessageSequence int64     `json:"messageSequence"`
+	ClientMessageID string    `json:"clientMessageId"`
+	Body            string    `json:"body"`
+	PublishedAt     time.Time `json:"publishedAt"`
+}
+
+type TraceMessage struct {
+	outboundMessage
+	TraceTime time.Time
 }

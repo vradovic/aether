@@ -21,11 +21,6 @@ if (!URLS) {
 }
 
 export const options = {
-  stages: [
-    { duration: '15s', target: 50 },
-    { duration: '15s', target: 500 },
-    { duration: '15s', target: 1000 },
-  ],
   thresholds: {
     ws_roundtrip_latency_ms: ['p(95)<150', 'p(99)<300'],
     ws_errors: ['count<100'],

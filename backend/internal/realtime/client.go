@@ -1,7 +1,6 @@
 package realtime
 
 import (
-	"context"
 	"log/slog"
 	"time"
 
@@ -21,12 +20,13 @@ type client struct {
 	userID        string
 	conversations []string
 	conn          *websocket.Conn
-	send          chan outboundMessage
+	send          chan TraceMessage
 	publisher     publisher
-	router        router
+	router        Router
+	metrics       *Metrics
 }
 
-func (c *client) readPump(ctx context.Context) {
+func (c *client) readPump() {
 	defer func() {
 		c.router.unregister <- c
 		c.conn.Close()
@@ -42,16 +42,18 @@ func (c *client) readPump(ctx context.Context) {
 			c.logger.Warn("read message fail", "error", err)
 			return
 		}
-		time.Now()
 
 		c.logger.Debug("read message", "msg", msg)
+		publishedAt := time.Now()
 		if err := c.publisher.publish(publishMessage{
 			inboundMessage: msg,
 			SenderID:       c.userID,
-			PublishedAt:    time.Now(),
+			PublishedAt:    publishedAt,
 		}); err != nil {
 			c.logger.Warn("publish message fail", "error", err)
 		}
+
+		c.metrics.StageDuration.WithLabelValues("unprocessed_message_publish").Observe(time.Since(publishedAt).Seconds())
 	}
 }
 
@@ -71,11 +73,12 @@ func (c *client) writePump() {
 				return
 			}
 
-			err := c.conn.WriteJSON(msg)
+			err := c.conn.WriteJSON(msg.outboundMessage)
 			if err != nil {
 				c.logger.Warn("websocket write failed", "error", err)
 				return
 			}
+			c.metrics.StageDuration.WithLabelValues("message_write_to_client").Observe(time.Since(msg.TraceTime).Seconds())
 		case <-ticker.C:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {

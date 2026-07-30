@@ -3,14 +3,16 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"time"
 )
 
 type Message struct {
-	ID              string `json:"id"`
-	SenderID        string `json:"senderId"`
-	ConversationID  string `json:"conversationId"`
-	ClientMessageID string `json:"clientMessageId"`
-	Body            string `json:"body"`
+	ID              string    `json:"id"`
+	SenderID        string    `json:"senderId"`
+	ConversationID  string    `json:"conversationId"`
+	ClientMessageID string    `json:"clientMessageId"`
+	Body            string    `json:"body"`
+	PublishedAt     time.Time `json:"publishedAt"`
 }
 
 type Writer interface {
@@ -31,13 +33,15 @@ type Logger interface {
 	Error(msg string, args ...any)
 }
 
-func Process(ctx context.Context, data []byte, writer Writer, publisher Publisher, acker Acker, logger Logger) {
+func Process(ctx context.Context, data []byte, writer Writer, publisher Publisher, acker Acker, logger Logger, metrics *Metrics) {
 	msg, err := ParseMessage(data)
 	if err != nil {
 		logger.Error("message parse error", "error", err)
 		TermLog(acker, logger)
 		return
 	}
+	metrics.StageDuration.WithLabelValues("message_pull").Observe(time.Since(msg.PublishedAt).Seconds())
+	processingStart := time.Now()
 
 	msg, err = writer.Write(ctx, msg)
 	if err != nil {
@@ -53,6 +57,7 @@ func Process(ctx context.Context, data []byte, writer Writer, publisher Publishe
 		return
 	}
 
+	msg.PublishedAt = time.Now()
 	if err := publisher.Publish(msg, data); err != nil {
 		logger.Error("message publish error", "error", err)
 	}
@@ -61,6 +66,8 @@ func Process(ctx context.Context, data []byte, writer Writer, publisher Publishe
 		logger.Error("message ack error", "error", err)
 		NakLog(acker, logger)
 	}
+
+	metrics.StageDuration.WithLabelValues("message_processing").Observe(time.Since(processingStart).Seconds())
 }
 
 func ParseMessage(data []byte) (msg Message, err error) {
