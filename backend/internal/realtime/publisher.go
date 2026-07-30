@@ -1,7 +1,6 @@
 package realtime
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 
@@ -20,7 +19,7 @@ func NewPublisher(nc *nats.Conn, subject string) publisher {
 	}
 }
 
-func (p publisher) publish(ctx context.Context, msg publishMessage) error {
+func (p publisher) publish(msg publishMessage) error {
 	bytes, err := json.Marshal(&msg)
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)

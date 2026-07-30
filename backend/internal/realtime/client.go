@@ -42,12 +42,13 @@ func (c *client) readPump(ctx context.Context) {
 			c.logger.Warn("read message fail", "error", err)
 			return
 		}
+		time.Now()
 
 		c.logger.Debug("read message", "msg", msg)
-		if err := c.publisher.publish(ctx, publishMessage{
+		if err := c.publisher.publish(publishMessage{
 			inboundMessage: msg,
 			SenderID:       c.userID,
-			// MessageSequence gets set by publisher
+			PublishedAt:    time.Now(),
 		}); err != nil {
 			c.logger.Warn("publish message fail", "error", err)
 		}

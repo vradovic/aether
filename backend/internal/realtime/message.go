@@ -1,5 +1,7 @@
 package realtime
 
+import "time"
+
 type inboundMessage struct {
 	ConversationID  string `json:"conversationId"`
 	ClientMessageID string `json:"clientMessageId"`
@@ -8,7 +10,8 @@ type inboundMessage struct {
 
 type publishMessage struct {
 	inboundMessage
-	SenderID string `json:"senderId"`
+	SenderID    string    `json:"senderId"`
+	PublishedAt time.Time `json:"publishedAt"`
 }
 
 type outboundMessage struct {
