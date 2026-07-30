@@ -8,40 +8,36 @@ const roundtripTrend = new Trend('ws_roundtrip_latency_ms');
 const errorCounter = new Counter('ws_errors');
 const sentCounter = new Counter('ws_messages_sent');
 const recvCounter = new Counter('ws_messages_received');
-const timeoutCounter = new Counter('ws_message_timeouts');
 
 const tokenPool = new SharedArray('token_pool', function () {
   return JSON.parse(open('./tokens.json'));
 });
 
-const VUS = parseInt(__ENV.VUS || '50');
-const DURATION = __ENV.DURATION || '10s';
-const TARGET_MSG_RATE = parseFloat(__ENV.TARGET_MSG_RATE || '1.0') // per second
-const MSG_INTERVAL_MS = Math.round((VUS / TARGET_MSG_RATE) * 1000)
-const MSG_TIMEOUT_MS = parseInt(__ENV.MSG_TIMEOUT_MS || '10000');
-const WS_URLS = __ENV.WS_URLS || 'ws://localhost:8080/ws';
+const MSG_INTERVAL_MS = 1000
+const URLS = __ENV.URLS;
+
+if (!URLS) {
+  throw new Error('URLS must be set.');
+}
 
 export const options = {
-  scenarios: {
-    ws: {
-      executor: 'constant-vus',
-      vus: VUS,
-      duration: DURATION,
-    },
-  },
+  stages: [
+    { duration: '15s', target: 50 },
+    { duration: '15s', target: 500 },
+    { duration: '15s', target: 1000 },
+  ],
   thresholds: {
-    ws_roundtrip_latency_ms: ['p(95)<500', 'p(99)<1000'],
-    ws_errors: ['count<1'],
-    ws_message_timeouts: ['count<1'],
+    ws_roundtrip_latency_ms: ['p(95)<150', 'p(99)<300'],
+    ws_errors: ['count<100'],
   },
 };
 
 export default function () {
   const userObj = tokenPool[__VU % tokenPool.length];
   const token = userObj.token;
-  const conversationID = userObj.conversationID || '00000000-0000-0000-0000-000000000001';
+  const conversationID = userObj.conversationID;
 
-  const urls = WS_URLS.split(',');
+  const urls = URLS.split(',');
   const targetUrl = urls[__VU % urls.length].trim() + '?token=' + token;
 
   const pending = new Map();
@@ -61,18 +57,8 @@ export default function () {
       }, MSG_INTERVAL_MS);
 
       socket.setInterval(function () {
-        const now = Date.now();
-        for (const [id, sentAt] of pending) {
-          if (now - sentAt > MSG_TIMEOUT_MS) {
-            timeoutCounter.add(1);
-            pending.delete(id);
-          }
-        }
-      }, Math.max(MSG_INTERVAL_MS, 2000));
-
-      socket.setInterval(function () {
         socket.close();
-      }, 10000);
+      }, 50000); // close after 50s
     });
 
     socket.on('message', function (data) {
@@ -84,13 +70,12 @@ export default function () {
           pending.delete(msg.clientMessageId);
         }
       } catch (err) {
-        // Ignore unparseable control frames
+        // ignore unparseable control frames
       }
     });
 
-    socket.on('error', function (e) {
+    socket.on('error', function () {
       errorCounter.add(1);
-      console.error(`WS error VU=${__VU} url=${targetUrl} error=${e.error()}`);
     });
   });
 

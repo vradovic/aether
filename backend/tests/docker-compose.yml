@@ -53,7 +53,7 @@ services:
       - -c
       - |
         nats stream info MESSAGES -s nats:4222 >/dev/null 2>&1 || nats stream add --config /config/nats-stream.json -s nats:4222
-        nats consumer info MESSAGES message-service -s nats:4222 >/dev/null 2>&1 || nats consumer add --config /config/nats-consumer.json -s nats:4222
+        nats consumer info MESSAGES message-service -s nats:4222 >/dev/null 2>&1 || nats consumer add MESSAGES --config /config/nats-consumer.json -s nats:4222
 
   scylla:
     image: scylladb/scylla:6.2
@@ -93,10 +93,10 @@ services:
       NATS_SUBJECT: message
       JWT_SIGNING_KEY: ${JWT_SIGNING_KEY}
     depends_on:
-      postgres:
-        condition: service_healthy
-      nats:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      nats-box:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [
@@ -124,7 +124,7 @@ services:
       SCYLLA_HOSTS: scylla:9042
       SCYLLA_KEYSPACE: aether
     depends_on:
-      nats:
-        condition: service_healthy
-      scylla:
-        condition: service_healthy
+      nats-box:
+        condition: service_completed_successfully
+      scylla-init:
+        condition: service_completed_successfully

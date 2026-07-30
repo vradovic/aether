@@ -3,7 +3,7 @@
   "subjects": [
     "messages.unprocessed.*"
   ],
-  "retention": "limits",
+  "retention": "workqueue",
   "max_consumers": -1,
   "max_msgs": -1,
   "max_bytes": -1,
