@@ -59,7 +59,7 @@ func main() {
 	go func() {
 		ticker := time.NewTicker(1 * time.Second)
 		for range ticker.C {
-			metrics.NatsChannelDepth.Set(float64(len(router.NatsCh)))
+			metrics.NatsChannelDepth.Set(float64(router.NatsChannelDepth()))
 		}
 	}()
 
