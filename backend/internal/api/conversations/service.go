@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/gocql/gocql"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/vradovic/aether/backend/internal/core"
@@ -25,7 +26,7 @@ var (
 	ErrInvalidConversationID   = errors.New("invalid conversation ID")
 	ErrInvalidParticipantID    = errors.New("invalid participant ID")
 	ErrInvalidConversationName = errors.New("conversation name must contain between 1 and 50 characters")
-	ErrInvalidAfterSequence    = errors.New("after_sequence must be a non-negative integer")
+	ErrInvalidAfterID          = errors.New("after_id must be a time UUID")
 	ErrParticipantNotContact   = errors.New("conversation participants must be contacts")
 	ErrParticipantExists       = errors.New("conversation participant already exists")
 	ErrParticipantNotFound     = errors.New("conversation participant not found")
@@ -43,10 +44,17 @@ type Message struct {
 	ConversationID  string    `json:"conversationId"`
 	SenderID        string    `json:"senderId"`
 	ClientMessageID string    `json:"clientMessageId"`
-	MessageSequence int64     `json:"messageSequence"`
 	Body            string    `json:"body"`
 	CreatedAt       time.Time `json:"createdAt"`
-	UpdatedAt       time.Time `json:"updatedAt"`
+}
+
+// StoredMessage is a message as the worker service persisted it.
+type StoredMessage struct {
+	ID              gocql.UUID
+	ConversationID  gocql.UUID
+	SenderID        gocql.UUID
+	ClientMessageID gocql.UUID
+	Body            string
 }
 
 type ConversationParticipant struct {
@@ -61,7 +69,6 @@ type Querier interface {
 	CreateConversationWithCreator(context.Context, db.CreateConversationWithCreatorParams) (db.CreateConversationWithCreatorRow, error)
 	UpdateConversationName(context.Context, db.UpdateConversationNameParams) (db.Conversation, error)
 	DeleteConversation(context.Context, db.DeleteConversationParams) (pgtype.UUID, error)
-	SyncMessages(context.Context, db.SyncMessagesParams) ([]db.Message, error)
 	IsConversationParticipant(context.Context, db.IsConversationParticipantParams) (bool, error)
 	IsConversationOwner(context.Context, db.IsConversationOwnerParams) (bool, error)
 	AreContacts(context.Context, db.AreContactsParams) (bool, error)
@@ -69,13 +76,22 @@ type Querier interface {
 	DeleteConversationParticipant(context.Context, db.DeleteConversationParticipantParams) (db.ConversationParticipant, error)
 }
 
-type Service struct {
-	querier Querier
-	logger  *slog.Logger
+// MessageStore reads persisted messages, oldest first. Conversations own their
+// messages in ScyllaDB, so message reads do not go through the Querier.
+type MessageStore interface {
+	// ReadMessages returns at most pageSize messages of a conversation that
+	// sort after afterID. A zero afterID starts from the oldest message.
+	ReadMessages(ctx context.Context, conversationID, afterID gocql.UUID, pageSize int) ([]StoredMessage, error)
 }
 
-func NewService(querier Querier, logger *slog.Logger) *Service {
-	return &Service{querier: querier, logger: logger}
+type Service struct {
+	querier  Querier
+	messages MessageStore
+	logger   *slog.Logger
+}
+
+func NewService(querier Querier, messages MessageStore, logger *slog.Logger) *Service {
+	return &Service{querier: querier, messages: messages, logger: logger}
 }
 
 func (s *Service) GetConversations(ctx context.Context, userID string) ([]Conversation, error) {
@@ -172,10 +188,7 @@ func (s *Service) UpdateConversation(ctx context.Context, name, userID, conversa
 	}, nil
 }
 
-func (s *Service) GetMessages(ctx context.Context, userID, conversationID string, afterSequence int64) ([]Message, error) {
-	if afterSequence < 0 {
-		return nil, ErrInvalidAfterSequence
-	}
+func (s *Service) GetMessages(ctx context.Context, userID, conversationID, afterID string) ([]Message, error) {
 	participantID, err := core.ParseUUID(userID)
 	if err != nil {
 		return nil, err
@@ -183,6 +196,10 @@ func (s *Service) GetMessages(ctx context.Context, userID, conversationID string
 	conversationUUID, err := core.ParseUUID(conversationID)
 	if err != nil {
 		return nil, ErrInvalidConversationID
+	}
+	after, err := parseMessageCursor(afterID)
+	if err != nil {
+		return nil, err
 	}
 
 	isParticipant, err := s.querier.IsConversationParticipant(ctx, db.IsConversationParticipantParams{
@@ -196,30 +213,37 @@ func (s *Service) GetMessages(ctx context.Context, userID, conversationID string
 		return nil, ErrConversationNotFound
 	}
 
-	databaseMessages, err := s.querier.SyncMessages(ctx, db.SyncMessagesParams{
-		UserID:         participantID,
-		ConversationID: conversationUUID,
-		AfterSequence:  afterSequence,
-		PageSize:       messagesPageSize,
-	})
+	storedMessages, err := s.messages.ReadMessages(ctx, gocql.UUID(conversationUUID.Bytes), after, messagesPageSize)
 	if err != nil {
 		return nil, fmt.Errorf("get messages for conversation %s: %w", conversationID, err)
 	}
 
-	messages := make([]Message, 0, len(databaseMessages))
-	for _, message := range databaseMessages {
+	messages := make([]Message, 0, len(storedMessages))
+	for _, message := range storedMessages {
 		messages = append(messages, Message{
 			ID:              message.ID.String(),
 			ConversationID:  message.ConversationID.String(),
 			SenderID:        message.SenderID.String(),
 			ClientMessageID: message.ClientMessageID.String(),
-			MessageSequence: message.MessageSequence,
 			Body:            message.Body,
-			CreatedAt:       message.CreatedAt.Time,
-			UpdatedAt:       message.UpdatedAt.Time,
+			CreatedAt:       message.ID.Time(),
 		})
 	}
 	return messages, nil
+}
+
+// parseMessageCursor turns an after_id value into a clustering-key cursor. An
+// empty value pages from the oldest message; anything that is not a time UUID
+// cannot address a row in the message store.
+func parseMessageCursor(afterID string) (gocql.UUID, error) {
+	if afterID == "" {
+		return gocql.UUID{}, nil
+	}
+	cursor, err := gocql.ParseUUID(afterID)
+	if err != nil || cursor.Version() != 1 {
+		return gocql.UUID{}, ErrInvalidAfterID
+	}
+	return cursor, nil
 }
 
 func (s *Service) AddParticipant(ctx context.Context, userID, conversationID, participantID string) (ConversationParticipant, error) {

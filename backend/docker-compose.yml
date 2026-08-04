@@ -119,9 +119,13 @@ services:
     environment:
       SERVER_ADDRESS: 0.0.0.0:8081
       DB_ADDRESS: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+      SCYLLA_HOSTS: scylla:9042
+      SCYLLA_KEYSPACE: aether
       JWT_SIGNING_KEY: ${JWT_SIGNING_KEY}
     depends_on:
       migrate:
+        condition: service_completed_successfully
+      scylla-init:
         condition: service_completed_successfully
 
   nginx:

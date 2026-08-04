@@ -18,6 +18,10 @@ import (
 
 const testConversationID = "d56ba3a9-d89e-4474-aefa-6247d34b01f9"
 const testParticipantID = "b0a782cf-b3d4-4ed1-ab01-b36022c1480a"
+
+// testMessageID is a version 1 UUID, the only form the message store clusters on.
+const testMessageID = "f6d1a1a0-5b9f-11f0-9f4a-0242ac120002"
+
 const testUserID = "550e8400-e29b-41d4-a716-446655440000"
 
 type fakeConversationsService struct {
@@ -28,7 +32,7 @@ type fakeConversationsService struct {
 	err           error
 	getFn         func(context.Context, string) ([]conversations.Conversation, error)
 	updateFn      func(context.Context, string, string, string) (conversations.Conversation, error)
-	messagesFn    func(context.Context, string, string, int64) ([]conversations.Message, error)
+	messagesFn    func(context.Context, string, string, string) ([]conversations.Message, error)
 	addFn         func(context.Context, string, string, string) (conversations.ConversationParticipant, error)
 	deleteFn      func(context.Context, string, string) error
 	removeFn      func(context.Context, string, string, string) error
@@ -52,9 +56,9 @@ func (f fakeConversationsService) UpdateConversation(ctx context.Context, name, 
 	return f.conversation, f.err
 }
 
-func (f fakeConversationsService) GetMessages(ctx context.Context, userID, conversationID string, afterSequence int64) ([]conversations.Message, error) {
+func (f fakeConversationsService) GetMessages(ctx context.Context, userID, conversationID, afterID string) ([]conversations.Message, error) {
 	if f.messagesFn != nil {
-		return f.messagesFn(ctx, userID, conversationID, afterSequence)
+		return f.messagesFn(ctx, userID, conversationID, afterID)
 	}
 	return f.messages, f.err
 }
@@ -255,16 +259,16 @@ func TestUpdateConversation(t *testing.T) {
 }
 
 func TestGetConversationMessages(t *testing.T) {
-	t.Run("passes after_sequence and returns messages", func(t *testing.T) {
+	t.Run("passes after_id and returns messages", func(t *testing.T) {
 		service := fakeConversationsService{
-			messagesFn: func(_ context.Context, userID, conversationID string, afterSequence int64) ([]conversations.Message, error) {
-				if userID != testUserID || conversationID != testConversationID || afterSequence != 7 {
-					t.Fatalf("unexpected message arguments: userID=%q conversationID=%q after=%d", userID, conversationID, afterSequence)
+			messagesFn: func(_ context.Context, userID, conversationID, afterID string) ([]conversations.Message, error) {
+				if userID != testUserID || conversationID != testConversationID || afterID != testMessageID {
+					t.Fatalf("unexpected message arguments: userID=%q conversationID=%q after=%q", userID, conversationID, afterID)
 				}
-				return []conversations.Message{{ID: testParticipantID, ConversationID: conversationID, MessageSequence: 8, Body: "hello"}}, nil
+				return []conversations.Message{{ID: testMessageID, ConversationID: conversationID, Body: "hello"}}, nil
 			},
 		}
-		response := serveConversationRequest(t, service, http.MethodGet, "/conversations/"+testConversationID+"/messages?after_sequence=7", "")
+		response := serveConversationRequest(t, service, http.MethodGet, "/conversations/"+testConversationID+"/messages?after_id="+testMessageID, "")
 
 		if response.Code != http.StatusOK {
 			t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
@@ -273,14 +277,37 @@ func TestGetConversationMessages(t *testing.T) {
 		if err := json.Unmarshal(response.Body.Bytes(), &messages); err != nil {
 			t.Fatalf("decode response: %v", err)
 		}
-		if len(messages) != 1 || messages[0].MessageSequence != 8 {
+		if len(messages) != 1 || messages[0].ID != testMessageID {
 			t.Fatalf("unexpected messages: %+v", messages)
 		}
 	})
 
-	for _, query := range []string{"?after_sequence=-1", "?after_sequence=nope", "?after_sequence=", "?after_sequence=1&after_sequence=2"} {
-		t.Run(query, func(t *testing.T) {
-			response := serveConversationRequest(t, fakeConversationsService{}, http.MethodGet, "/conversations/"+testConversationID+"/messages"+query, "")
+	t.Run("defaults to the oldest message", func(t *testing.T) {
+		service := fakeConversationsService{
+			messagesFn: func(_ context.Context, _, _, afterID string) ([]conversations.Message, error) {
+				if afterID != "" {
+					t.Fatalf("after ID = %q, want empty", afterID)
+				}
+				return nil, nil
+			},
+		}
+		response := serveConversationRequest(t, service, http.MethodGet, "/conversations/"+testConversationID+"/messages", "")
+		if response.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
+		}
+	})
+
+	for _, tt := range []struct {
+		query string
+		err   error
+	}{
+		{query: "?after_id="},
+		{query: "?after_id=" + testMessageID + "&after_id=" + testMessageID},
+		{query: "?after_id=nope", err: conversations.ErrInvalidAfterID},
+		{query: "?after_id=" + testParticipantID, err: conversations.ErrInvalidAfterID},
+	} {
+		t.Run(tt.query, func(t *testing.T) {
+			response := serveConversationRequest(t, fakeConversationsService{err: tt.err}, http.MethodGet, "/conversations/"+testConversationID+"/messages"+tt.query, "")
 			if response.Code != http.StatusBadRequest {
 				t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusBadRequest, response.Body.String())
 			}

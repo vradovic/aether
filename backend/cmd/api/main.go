@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -13,6 +14,7 @@ import (
 	"github.com/vradovic/aether/backend/internal/api/auth"
 	"github.com/vradovic/aether/backend/internal/api/contacts"
 	"github.com/vradovic/aether/backend/internal/api/conversations"
+	"github.com/vradovic/aether/backend/internal/core"
 	"github.com/vradovic/aether/backend/internal/db"
 )
 
@@ -36,6 +38,14 @@ func main() {
 
 	queries := db.New(pool)
 
+	scyllaHosts := strings.Split(cfg.ScyllaHosts, ",")
+	session, err := core.NewScyllaCluster(scyllaHosts, cfg.ScyllaKeyspace).CreateSession()
+	if err != nil {
+		log.Fatalf("failed to connect to scylladb: %v", err)
+	}
+	defer session.Close()
+	logger.Info("connected to scylladb", "hosts", scyllaHosts, "keyspace", cfg.ScyllaKeyspace)
+
 	middleware := api.Middleware{SigningKey: cfg.JWTSigningKey}
 
 	authService := auth.NewService(queries, cfg.JWTSigningKey)
@@ -44,7 +54,7 @@ func main() {
 	contactsService := contacts.NewService(queries, pool)
 	contactsHandler := contacts.NewHandler(contactsService, logger)
 
-	conversationsService := conversations.NewService(queries, logger)
+	conversationsService := conversations.NewService(queries, conversations.NewScyllaReader(session), logger)
 	conversationsHandler := conversations.NewHandler(conversationsService, logger)
 
 	mux := http.NewServeMux()

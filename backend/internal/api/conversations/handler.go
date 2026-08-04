@@ -6,7 +6,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strconv"
 
 	"github.com/vradovic/aether/backend/internal/api"
 	"github.com/vradovic/aether/backend/internal/api/httputil"
@@ -17,7 +16,7 @@ type ServiceInterface interface {
 	GetConversations(context.Context, string) ([]Conversation, error)
 	CreateConversation(context.Context, string, string) (Conversation, error)
 	UpdateConversation(context.Context, string, string, string) (Conversation, error)
-	GetMessages(context.Context, string, string, int64) ([]Message, error)
+	GetMessages(context.Context, string, string, string) ([]Message, error)
 	AddParticipant(context.Context, string, string, string) (ConversationParticipant, error)
 	DeleteConversation(context.Context, string, string) error
 	RemoveParticipant(context.Context, string, string, string) error
@@ -114,25 +113,20 @@ func (h *Handler) updateConversation(w http.ResponseWriter, r *http.Request, use
 }
 
 func (h *Handler) getMessages(w http.ResponseWriter, r *http.Request, userID string) {
-	afterSequence := int64(0)
-	values, present := r.URL.Query()["after_sequence"]
+	afterID := ""
+	values, present := r.URL.Query()["after_id"]
 	if present {
 		if len(values) != 1 || values[0] == "" {
-			http.Error(w, ErrInvalidAfterSequence.Error(), http.StatusBadRequest)
+			http.Error(w, ErrInvalidAfterID.Error(), http.StatusBadRequest)
 			return
 		}
-		sequence, err := strconv.ParseInt(values[0], 10, 64)
-		if err != nil || sequence < 0 {
-			http.Error(w, ErrInvalidAfterSequence.Error(), http.StatusBadRequest)
-			return
-		}
-		afterSequence = sequence
+		afterID = values[0]
 	}
 
-	messages, err := h.svc.GetMessages(r.Context(), userID, r.PathValue("conversationID"), afterSequence)
+	messages, err := h.svc.GetMessages(r.Context(), userID, r.PathValue("conversationID"), afterID)
 	if err != nil {
 		switch {
-		case errors.Is(err, ErrInvalidAfterSequence), errors.Is(err, ErrInvalidConversationID):
+		case errors.Is(err, ErrInvalidAfterID), errors.Is(err, ErrInvalidConversationID):
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		case errors.Is(err, core.ErrInvalidID):
 			httputil.Unauthorized(w)

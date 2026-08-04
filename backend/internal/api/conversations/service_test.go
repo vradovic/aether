@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gocql/gocql"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/vradovic/aether/backend/internal/api/apitest"
@@ -14,10 +15,39 @@ import (
 	"github.com/vradovic/aether/backend/internal/core"
 )
 
+// fakeMessageStore stands in for ScyllaDB. It holds one conversation's messages
+// in clustering order, so paging means slicing past the cursor.
+type fakeMessageStore struct {
+	messages []conversations.StoredMessage
+}
+
+func (f *fakeMessageStore) ReadMessages(_ context.Context, conversationID, afterID gocql.UUID, pageSize int) ([]conversations.StoredMessage, error) {
+	messages := make([]conversations.StoredMessage, 0, len(f.messages))
+	for _, message := range f.messages {
+		if message.ConversationID == conversationID {
+			messages = append(messages, message)
+		}
+	}
+
+	// A zero cursor never matches a time UUID, so it pages from the oldest message.
+	for index, message := range messages {
+		if message.ID == afterID {
+			messages = messages[index+1:]
+			break
+		}
+	}
+
+	if len(messages) > pageSize {
+		messages = messages[:pageSize]
+	}
+	return messages, nil
+}
+
 func TestConversationsService(t *testing.T) {
 	ctx := context.Background()
 	pool, queries := apitest.StartDatabase(t, ctx)
-	service := conversations.NewService(queries, slog.New(slog.DiscardHandler))
+	messageStore := &fakeMessageStore{}
+	service := conversations.NewService(queries, messageStore, slog.New(slog.DiscardHandler))
 
 	ownerID := createContactsTestUser(t, ctx, pool, "conversation_owner")
 	contactID := createContactsTestUser(t, ctx, pool, "conversation_contact")
@@ -124,25 +154,39 @@ func TestConversationsService(t *testing.T) {
 		}
 	})
 
-	t.Run("gets messages after the requested sequence for participants", func(t *testing.T) {
-		seedConversationTestMessages(t, ctx, pool, conversation.ID, ownerID, contactID)
+	t.Run("gets messages after the cursor for participants", func(t *testing.T) {
+		stored := seedConversationTestMessages(t, messageStore, conversation.ID, ownerID, contactID)
 
-		messages, err := service.GetMessages(ctx, contactID.String(), conversation.ID, 1)
+		messages, err := service.GetMessages(ctx, contactID.String(), conversation.ID, "")
 		if err != nil {
 			t.Fatalf("GetMessages() error = %v", err)
 		}
-		if len(messages) != 2 || messages[0].MessageSequence != 3 || messages[1].MessageSequence != 2 {
-			t.Fatalf("GetMessages() sequences = %+v, want [3, 2]", messages)
+		if len(messages) != 3 || messages[0].ID != stored[0].ID.String() || messages[2].ID != stored[2].ID.String() {
+			t.Fatalf("GetMessages() = %+v, want all three messages oldest first", messages)
 		}
 		if messages[0].ConversationID != conversation.ID || messages[0].ClientMessageID == "" {
 			t.Fatalf("message mapping is incomplete: %+v", messages[0])
 		}
+		if messages[0].SenderID != ownerID.String() || messages[0].CreatedAt.IsZero() {
+			t.Fatalf("message mapping is incomplete: %+v", messages[0])
+		}
 
-		if _, err := service.GetMessages(ctx, nonContactID.String(), conversation.ID, 0); !errors.Is(err, conversations.ErrConversationNotFound) {
+		after, err := service.GetMessages(ctx, contactID.String(), conversation.ID, stored[0].ID.String())
+		if err != nil {
+			t.Fatalf("cursored GetMessages() error = %v", err)
+		}
+		if len(after) != 2 || after[0].ID != stored[1].ID.String() {
+			t.Fatalf("cursored GetMessages() = %+v, want the last two messages", after)
+		}
+
+		if _, err := service.GetMessages(ctx, nonContactID.String(), conversation.ID, ""); !errors.Is(err, conversations.ErrConversationNotFound) {
 			t.Fatalf("outsider GetMessages() error = %v, want %v", err, conversations.ErrConversationNotFound)
 		}
-		if _, err := service.GetMessages(ctx, ownerID.String(), conversation.ID, -1); !errors.Is(err, conversations.ErrInvalidAfterSequence) {
-			t.Fatalf("negative sequence error = %v, want %v", err, conversations.ErrInvalidAfterSequence)
+		if _, err := service.GetMessages(ctx, ownerID.String(), conversation.ID, "not-a-uuid"); !errors.Is(err, conversations.ErrInvalidAfterID) {
+			t.Fatalf("malformed cursor error = %v, want %v", err, conversations.ErrInvalidAfterID)
+		}
+		if _, err := service.GetMessages(ctx, ownerID.String(), conversation.ID, conversation.ID); !errors.Is(err, conversations.ErrInvalidAfterID) {
+			t.Fatalf("non-time-UUID cursor error = %v, want %v", err, conversations.ErrInvalidAfterID)
 		}
 	})
 
@@ -156,7 +200,7 @@ func TestConversationsService(t *testing.T) {
 		if err := service.RemoveParticipant(ctx, ownerID.String(), conversation.ID, contactID.String()); err != nil {
 			t.Fatalf("RemoveParticipant() error = %v", err)
 		}
-		if _, err := service.GetMessages(ctx, contactID.String(), conversation.ID, 0); !errors.Is(err, conversations.ErrConversationNotFound) {
+		if _, err := service.GetMessages(ctx, contactID.String(), conversation.ID, ""); !errors.Is(err, conversations.ErrConversationNotFound) {
 			t.Fatalf("removed participant GetMessages() error = %v, want %v", err, conversations.ErrConversationNotFound)
 		}
 	})
@@ -169,18 +213,15 @@ func TestConversationsService(t *testing.T) {
 			t.Fatalf("DeleteConversation() error = %v", err)
 		}
 
-		var conversationsCount, participants, messages int
+		var conversationsCount, participants int
 		if err := pool.QueryRow(ctx, "SELECT count(*) FROM conversations WHERE id = $1", conversation.ID).Scan(&conversationsCount); err != nil {
 			t.Fatalf("count deleted conversation: %v", err)
 		}
 		if err := pool.QueryRow(ctx, "SELECT count(*) FROM conversation_participants WHERE conversation_id = $1", conversation.ID).Scan(&participants); err != nil {
 			t.Fatalf("count deleted participants: %v", err)
 		}
-		if err := pool.QueryRow(ctx, "SELECT count(*) FROM messages WHERE conversation_id = $1", conversation.ID).Scan(&messages); err != nil {
-			t.Fatalf("count deleted messages: %v", err)
-		}
-		if conversationsCount != 0 || participants != 0 || messages != 0 {
-			t.Fatalf("delete counts = conversations:%d participants:%d messages:%d, want all zero", conversationsCount, participants, messages)
+		if conversationsCount != 0 || participants != 0 {
+			t.Fatalf("delete counts = conversations:%d participants:%d, want all zero", conversationsCount, participants)
 		}
 		if err := service.DeleteConversation(ctx, ownerID.String(), conversation.ID); !errors.Is(err, conversations.ErrConversationNotFound) {
 			t.Fatalf("repeated DeleteConversation() error = %v, want %v", err, conversations.ErrConversationNotFound)
@@ -191,7 +232,7 @@ func TestConversationsService(t *testing.T) {
 		if _, err := service.CreateConversation(ctx, "Name", "invalid"); !errors.Is(err, core.ErrInvalidID) {
 			t.Fatalf("invalid creator error = %v, want %v", err, core.ErrInvalidID)
 		}
-		if _, err := service.GetMessages(ctx, ownerID.String(), "invalid", 0); !errors.Is(err, conversations.ErrInvalidConversationID) {
+		if _, err := service.GetMessages(ctx, ownerID.String(), "invalid", ""); !errors.Is(err, conversations.ErrInvalidConversationID) {
 			t.Fatalf("invalid conversation error = %v, want %v", err, conversations.ErrInvalidConversationID)
 		}
 		if _, err := service.GetConversations(ctx, "invalid"); !errors.Is(err, core.ErrInvalidID) {
@@ -223,18 +264,26 @@ func insertConversationTestContact(t *testing.T, ctx context.Context, pool *pgxp
 	}
 }
 
-func seedConversationTestMessages(t *testing.T, ctx context.Context, pool *pgxpool.Pool, conversationID string, ownerID, contactID pgtype.UUID) {
+func seedConversationTestMessages(t *testing.T, store *fakeMessageStore, conversationID string, ownerID, contactID pgtype.UUID) []conversations.StoredMessage {
 	t.Helper()
-	for sequence, senderID := range []pgtype.UUID{ownerID, contactID, ownerID} {
-		if _, err := pool.Exec(ctx, `
-			INSERT INTO messages (conversation_id, sender_id, client_message_id, message_sequence, body)
-			VALUES ($1, $2, gen_random_uuid(), $3, $4)`, conversationID, senderID, sequence+1, "message body"); err != nil {
-			t.Fatalf("insert message sequence %d: %v", sequence+1, err)
-		}
+
+	conversationUUID, err := gocql.ParseUUID(conversationID)
+	if err != nil {
+		t.Fatalf("parse conversation ID %q: %v", conversationID, err)
 	}
-	if _, err := pool.Exec(ctx, "UPDATE conversations SET last_message_sequence = 3 WHERE id = $1", conversationID); err != nil {
-		t.Fatalf("update last message sequence: %v", err)
+
+	seeded := make([]conversations.StoredMessage, 0, 3)
+	for _, senderID := range []pgtype.UUID{ownerID, contactID, ownerID} {
+		seeded = append(seeded, conversations.StoredMessage{
+			ID:              gocql.TimeUUID(),
+			ConversationID:  conversationUUID,
+			SenderID:        gocql.UUID(senderID.Bytes),
+			ClientMessageID: gocql.TimeUUID(),
+			Body:            "message body",
+		})
 	}
+	store.messages = seeded
+	return seeded
 }
 
 func containsConversation(convs []conversations.Conversation, id, name string) bool {

@@ -119,6 +119,8 @@ Handler tests are pure unit tests over hand-written fakes. Service tests call `a
 
 Postgres (via sqlc + goose) is the relational control plane: users, contacts, conversations, participants. ScyllaDB is the message store, partitioned by `conversation_id` and clustered by a Type-1 TimeUUID.
 
+Both the API and worker services connect to Scylla (`SCYLLA_HOSTS`, `SCYLLA_KEYSPACE`) via `core.NewScyllaCluster`. Message history pages forward on that clustering key: `GET /conversations/{id}/messages?after_id=<timeuuid>` returns up to 100 messages oldest first, and the client advances `after_id` to the last ID it received. Omitting `after_id` starts from the oldest message; a non-Type-1 UUID is a 400.
+
 Do not introduce SQL sequences or Scylla lightweight transactions for message IDs. The Go application generates `gocql.TimeUUID()` before insertion.
 
 ## Where the code diverges from the rules doc
@@ -127,4 +129,4 @@ Do not introduce SQL sequences or Scylla lightweight transactions for message ID
 
 - **No Redis and no "Director API."** Nothing in `go.mod` or compose references Redis. Gateway selection is done by nginx `least_conn`, not by clients querying a director for the lowest-connection node.
 - **No JetStream control plane.** The realtime service subscribes only to the Core NATS data plane; there are no eviction/kick control events.
-- **Message history is not wired up.** `conversations.GetMessages` reads the Postgres `messages` table via the `SyncMessages` query, but nothing writes to that table — the worker writes exclusively to ScyllaDB. The generated `InsertMessage` query has no callers. History requests return empty until this is reconciled.
+- **Message history reads ScyllaDB, not Postgres.** `conversations.GetMessages` authorizes against Postgres (`IsConversationParticipant`) and then reads the same ScyllaDB table the worker writes to, through `conversations.ScyllaReader`. The Postgres `messages` table still exists in `sql/migrations` but has no queries and no writers.

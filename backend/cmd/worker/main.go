@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"log/slog"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -11,10 +10,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gocql/gocql"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/vradovic/aether/backend/internal/core"
 	"github.com/vradovic/aether/backend/internal/worker"
 )
 
@@ -33,17 +32,7 @@ func main() {
 
 	scyllaHosts := strings.Split(cfg.ScyllaHosts, ",")
 
-	cluster := gocql.NewCluster(scyllaHosts...)
-	cluster.Keyspace = cfg.ScyllaKeyspace
-	cluster.Consistency = gocql.Quorum
-
-	if len(scyllaHosts) == 1 && (scyllaHosts[0] == "127.0.0.1" || scyllaHosts[0] == "localhost") {
-		cluster.AddressTranslator = gocql.AddressTranslatorFunc(func(ip net.IP, port int) (net.IP, int) {
-			return net.ParseIP(scyllaHosts[0]), port
-		})
-	}
-
-	session, err := cluster.CreateSession()
+	session, err := core.NewScyllaCluster(scyllaHosts, cfg.ScyllaKeyspace).CreateSession()
 	if err != nil {
 		logger.Error("failed to connect to scylladb", "error", err, "hosts", scyllaHosts, "keyspace", cfg.ScyllaKeyspace)
 		os.Exit(1)
