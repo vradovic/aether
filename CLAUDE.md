@@ -62,10 +62,10 @@ Regenerate `internal/db/` after touching `sql/migrations/` or `sql/queries/`:
 sqlc generate
 ```
 
-Load test the WebSocket path (`URLS` is a comma-separated list of `ws://…/ws` endpoints):
+Load test the WebSocket path. Each VU acts as one seeded user (from `tests/k6/tokens.json`) and connects through nginx, defaulting to `ws://localhost:8000/ws`; override with `-e URL=<ws endpoint>` to target a realtime replica directly:
 
 ```bash
-k6 run tests/k6/script.js -e URLS=ws://localhost:8000/ws
+k6 run tests/k6/script.js
 ```
 
 ## Service topology

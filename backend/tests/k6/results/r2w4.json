@@ -1,0 +1,113 @@
+{
+    "root_group": {
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "status is 101": {
+                    "name": "status is 101",
+                    "path": "::status is 101",
+                    "id": "b26b36ccbc717178372f638aae5b6111",
+                    "passes": 50,
+                    "fails": 0
+                }
+            }
+    },
+    "metrics": {
+        "checks": {
+            "passes": 50,
+            "fails": 0,
+            "value": 1
+        },
+        "ws_sessions": {
+            "count": 100,
+            "rate": 1.111099589008373
+        },
+        "ws_messages_received": {
+            "count": 93330,
+            "rate": 1036.9892464215145
+        },
+        "ws_roundtrip_latency_ms": {
+            "min": 1,
+            "med": 24,
+            "max": 94,
+            "p(90)": 40,
+            "p(95)": 45,
+            "p(99)": 67,
+            "avg": 24.531136363636364,
+            "thresholds": {
+                "p(95)<150": false,
+                "p(99)<300": false
+            }
+        },
+        "iteration_duration": {
+            "avg": 50024.80699399999,
+            "min": 50011.4095,
+            "med": 50024.5372,
+            "max": 50033.6648,
+            "p(90)": 50032.5666,
+            "p(95)": 50033.166984999996,
+            "p(99)": 50033.637115
+        },
+        "ws_msgs_sent": {
+            "count": 4427,
+            "rate": 49.188378805400674
+        },
+        "vus_max": {
+            "value": 50,
+            "min": 50,
+            "max": 50
+        },
+        "ws_errors": {
+            "count": 0,
+            "rate": 0,
+            "thresholds": {
+                "count<100": false
+            }
+        },
+        "ws_messages_sent": {
+            "count": 4427,
+            "rate": 49.188378805400674
+        },
+        "ws_connecting": {
+            "p(99)": 45.27086,
+            "avg": 31.50766500000001,
+            "min": 7.0944,
+            "med": 32.33305,
+            "max": 45.2768,
+            "p(90)": 42.728860000000005,
+            "p(95)": 43.216305
+        },
+        "ws_msgs_received": {
+            "count": 93330,
+            "rate": 1036.9892464215145
+        },
+        "vus": {
+            "value": 50,
+            "min": 50,
+            "max": 50
+        },
+        "ws_session_duration": {
+            "p(95)": 50033.166984999996,
+            "p(99)": 50033.637115,
+            "avg": 50024.701981999984,
+            "min": 50011.4095,
+            "med": 50024.5372,
+            "max": 50033.6648,
+            "p(90)": 50032.5666
+        },
+        "data_received": {
+            "count": 29398793,
+            "rate": 326649.86819642235
+        },
+        "data_sent": {
+            "rate": 8094.838278749272,
+            "count": 728543
+        },
+        "iterations": {
+            "count": 50,
+            "rate": 0.5555497945041865
+        }
+    }
+}

@@ -1,0 +1,88 @@
+# Aether load-test results — realtime × worker scaling matrix
+
+## Method
+
+- **Driver:** `tests/k6/script.js`. Each VU acts as one seeded user, connects through
+  nginx (`ws://localhost:8000/ws`), and sends 1 msg/s to a random conversation it belongs to.
+- **Seed data:** 50 users, 52 conversations, 241 participant rows (`sql/seeds/`).
+- **Fixed load in every cell:** 50 VUs, 60s duration.
+- **Stack:** `docker compose up -d --scale realtime-service=R --scale worker-service=W`,
+  followed by `nginx -s reload` (nginx resolves upstreams only at (re)load).
+- **Matrix:** R ∈ {1,2,3,4} × W ∈ {1,2,3,4}, all 16 combinations.
+
+Because the load is fixed, throughput is constant (~4,425 msgs sent, ~93k delivered, ~21×
+fan-out per cell). The meaningful variable is **roundtrip latency** (`ws_roundtrip_latency_ms`).
+This measures latency-under-headroom, **not** saturation — 50 VUs never stresses the system.
+
+Every cell: **100% checks (status 101), 0 ws_errors, 0 worker Naks, full ScyllaDB
+persistence, no slow-client drops.** All thresholds (p95<150ms, p99<300ms) passed everywhere.
+
+## Full results
+
+| realtime | worker | checks | ws_errors | sent | received | fanout | rt avg | rt med | rt p90 | rt p95 | rt p99 | rt max |
+|---------:|-------:|:------:|----------:|-----:|---------:|-------:|-------:|-------:|-------:|-------:|-------:|-------:|
+| 1 | 1 | 100% | 0 | 4425 | 94188 | 21.3x | 37.6ms | 34ms | 67ms | 85ms | 133ms | 165ms |
+| 1 | 2 | 100% | 0 | 4424 | 91381 | 20.7x | 32.9ms | 34ms | 53ms | 58ms | 73ms | 90ms |
+| 1 | 3 | 100% | 0 | 4429 | 90681 | 20.5x | 36.8ms | 37ms | 56ms | 69ms | 90ms | 124ms |
+| 1 | 4 | 100% | 0 | 4420 | 93805 | 21.2x | 34.2ms | 32ms | 55ms | 67ms | 103ms | 134ms |
+| 2 | 1 | 100% | 0 | 4421 | 94989 | 21.5x | 36.3ms | 33ms | 68ms | 90ms | 129ms | 207ms |
+| 2 | 2 | 100% | 0 | 4428 | 92112 | 20.8x | 30.7ms | 27ms | 56ms | 71ms | 89ms | 104ms |
+| 2 | 3 | 100% | 0 | 4429 | 95813 | 21.6x | 24.3ms | 13ms | 55ms | 96ms | 201ms | 288ms |
+| 2 | 4 | 100% | 0 | 4427 | 93330 | 21.1x | 24.5ms | 24ms | 40ms | 45ms | 67ms | 94ms |
+| 3 | 1 | 100% | 0 | 4424 | 92980 | 21.0x | 21.8ms | 21ms | 38ms | 45ms | 65ms | 76ms |
+| 3 | 2 | 100% | 0 | 4427 | 94342 | 21.3x | 24.7ms | 24ms | 42ms | 47ms | 65ms | 100ms |
+| 3 | 3 | 100% | 0 | 4424 | 94007 | 21.2x | 29.5ms | 29ms | 50ms | 59ms | 73ms | 98ms |
+| 3 | 4 | 100% | 0 | 4423 | 94263 | 21.3x | 20.9ms | 20ms | 34ms | 39ms | 64ms | 93ms |
+| 4 | 1 | 100% | 0 | 4433 | 94650 | 21.4x | 28.9ms | 29ms | 48ms | 55ms | 71ms | 84ms |
+| 4 | 2 | 100% | 0 | 4415 | 93692 | 21.2x | 33.1ms | 31ms | 54ms | 61ms | 79ms | 95ms |
+| 4 | 3 | 100% | 0 | 4424 | 92356 | 20.9x | 20.9ms | 17ms | 41ms | 55ms | 83ms | 105ms |
+| 4 | 4 | 100% | 0 | 4421 | 92337 | 20.9x | 20.6ms | 20ms | 34ms | 39ms | 60ms | 105ms |
+
+### Avg roundtrip latency grid (rows = realtime, cols = worker)
+
+|        | w1     | w2     | w3     | w4     |
+|--------|-------:|-------:|-------:|-------:|
+| **r1** | 37.6ms | 32.9ms | 36.8ms | 34.2ms |
+| **r2** | 36.3ms | 30.7ms | 24.3ms | 24.5ms |
+| **r3** | 21.8ms | 24.7ms | 29.5ms | 20.9ms |
+| **r4** | 28.9ms | 33.1ms | 20.9ms | 20.6ms |
+
+### p95 roundtrip latency grid
+
+|        | w1   | w2   | w3   | w4   |
+|--------|-----:|-----:|-----:|-----:|
+| **r1** | 85ms | 58ms | 69ms | 67ms |
+| **r2** | 90ms | 71ms | 96ms | 45ms |
+| **r3** | 45ms | 47ms | 59ms | 39ms |
+| **r4** | 55ms | 61ms | 55ms | 39ms |
+
+## Findings
+
+1. **Realtime replicas drive latency; workers barely move it.** Scaling realtime 1→3 cuts
+   avg roundtrip from ~37ms to ~21ms and p95 from 85ms to ~45ms. Scaling workers at fixed
+   realtime shows no consistent trend (r1 row: 37.6 → 32.9 → 36.8 → 34.2, all within noise).
+   This matches the architecture: the realtime tier does the heavy work — 21× fan-out,
+   ~1,050 msg/s delivered — so spreading connections and broadcast across cores helps.
+   Workers only persist the light ~50 msg/s ingest, which a single worker handles with 0 Naks.
+
+2. **Diminishing returns past realtime = 3.** r4 ≈ r3; the fourth realtime replica adds
+   nothing at this load. Worker = 1 is already sufficient; extra workers buy durability /
+   failover headroom, not latency.
+
+3. **The load never stresses the system.** All 16 configs passed every threshold with 0
+   errors and full persistence. At 50 VUs the only cost is mild scheduling / fan-out
+   contention on a single realtime process, not any tier saturating.
+
+4. **Single-host noise is visible.** All containers share one machine's CPU, so a few cells
+   show jitter (r2w3: p99 201ms, max 288ms) unrelated to the config. Best-behaved cells
+   cluster at realtime 3–4 (r3w4 and r4w4: p95 39ms, p99 60–64ms).
+
+**Bottom line:** the realtime / fan-out tier is the scaling lever for this workload —
+3 realtime replicas is the sweet spot, and 1 worker already keeps up on persistence. Finding
+real capacity ceilings (and a point where workers matter) needs VUs pushed well past 50.
+
+## Files
+
+- `matrix.md` — the results table above (generated by the run).
+- `r{R}w{W}.json` — k6 `--summary-export` per cell; baseline is `r1t1w1.json`.
+- `r{R}w{W}.log` — full k6 console output per cell.

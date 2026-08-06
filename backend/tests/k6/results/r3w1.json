@@ -1,0 +1,113 @@
+{
+    "metrics": {
+        "ws_connecting": {
+            "max": 67.064,
+            "p(90)": 60.707010000000004,
+            "p(95)": 63.157115,
+            "p(99)": 65.43347000000001,
+            "avg": 38.064395999999995,
+            "min": 4.8458,
+            "med": 35.46045
+        },
+        "iterations": {
+            "count": 50,
+            "rate": 0.5555513586736804
+        },
+        "ws_sessions": {
+            "count": 100,
+            "rate": 1.1111027173473609
+        },
+        "ws_messages_received": {
+            "count": 92980,
+            "rate": 1033.1033065895763
+        },
+        "vus_max": {
+            "value": 50,
+            "min": 50,
+            "max": 50
+        },
+        "ws_msgs_received": {
+            "count": 92980,
+            "rate": 1033.1033065895763
+        },
+        "vus": {
+            "min": 50,
+            "max": 50,
+            "value": 50
+        },
+        "ws_msgs_sent": {
+            "count": 4424,
+            "rate": 49.15518421544725
+        },
+        "iteration_duration": {
+            "med": 50035.6745,
+            "max": 50067.5626,
+            "p(90)": 50063.49699,
+            "p(95)": 50064.74942,
+            "p(99)": 50066.811969,
+            "avg": 50040.494082,
+            "min": 50008.8365
+        },
+        "data_sent": {
+            "rate": 8089.627776245277,
+            "count": 728072
+        },
+        "ws_roundtrip_latency_ms": {
+            "min": 0,
+            "med": 21,
+            "max": 76,
+            "p(90)": 38,
+            "p(95)": 45,
+            "p(99)": 65,
+            "avg": 21.76818181818182,
+            "thresholds": {
+                "p(95)<150": false,
+                "p(99)<300": false
+            }
+        },
+        "data_received": {
+            "count": 29287203,
+            "rate": 325410.9083680378
+        },
+        "checks": {
+            "passes": 50,
+            "fails": 0,
+            "value": 1
+        },
+        "ws_session_duration": {
+            "p(95)": 50064.520325,
+            "p(99)": 50066.552955,
+            "avg": 50040.347309999976,
+            "min": 50008.8365,
+            "med": 50035.41385,
+            "max": 50067.5626,
+            "p(90)": 50063.24954
+        },
+        "ws_errors": {
+            "count": 0,
+            "rate": 0,
+            "thresholds": {
+                "count<100": false
+            }
+        },
+        "ws_messages_sent": {
+            "count": 4424,
+            "rate": 49.15518421544725
+        }
+    },
+    "root_group": {
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "status is 101": {
+                    "path": "::status is 101",
+                    "id": "b26b36ccbc717178372f638aae5b6111",
+                    "passes": 50,
+                    "fails": 0,
+                    "name": "status is 101"
+                }
+            }
+    }
+}

@@ -9,16 +9,17 @@ const errorCounter = new Counter('ws_errors');
 const sentCounter = new Counter('ws_messages_sent');
 const recvCounter = new Counter('ws_messages_received');
 
-const tokenPool = new SharedArray('token_pool', function () {
+// One entry per seeded user: { userID, token, conversationIDs: [...] }.
+const userPool = new SharedArray('user_pool', function () {
   return JSON.parse(open('./tokens.json'));
 });
 
-const MSG_INTERVAL_MS = 1000
-const URLS = __ENV.URLS;
+const MSG_INTERVAL_MS = 1000;
+const CONNECTION_LIFETIME_MS = 50000;
 
-if (!URLS) {
-  throw new Error('URLS must be set.');
-}
+// Default to nginx, the single ingress that load-balances the realtime tier.
+// Override with -e URL=ws://host:port/ws to hit a different endpoint.
+const URL = __ENV.URL || 'ws://localhost:8000/ws';
 
 export const options = {
   thresholds: {
@@ -28,18 +29,23 @@ export const options = {
 };
 
 export default function () {
-  const userObj = tokenPool[__VU % tokenPool.length];
-  const token = userObj.token;
-  const conversationID = userObj.conversationID;
+  // Each VU acts as one seeded user. With more VUs than users the pool wraps,
+  // so several VUs can share a user — a realistic multi-device scenario.
+  const user = userPool[(__VU - 1) % userPool.length];
+  const token = user.token;
+  const conversationIDs = user.conversationIDs;
 
-  const urls = URLS.split(',');
-  const targetUrl = urls[__VU % urls.length].trim() + '?token=' + token;
+  const targetUrl = URL + '?token=' + token;
 
   const pending = new Map();
 
   const res = ws.connect(targetUrl, {}, function (socket) {
     socket.on('open', function () {
       socket.setInterval(function () {
+        // Spread traffic across every conversation this user belongs to.
+        const conversationID =
+          conversationIDs[Math.floor(Math.random() * conversationIDs.length)];
+
         const clientMessageId = uuidv4();
         pending.set(clientMessageId, Date.now());
 
@@ -51,9 +57,9 @@ export default function () {
         sentCounter.add(1);
       }, MSG_INTERVAL_MS);
 
-      socket.setInterval(function () {
+      socket.setTimeout(function () {
         socket.close();
-      }, 50000); // close after 50s
+      }, CONNECTION_LIFETIME_MS);
     });
 
     socket.on('message', function (data) {
